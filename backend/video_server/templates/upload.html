@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>파일 업로드</title>
+  </head>
+  <body>
+    <h1>📁 이미지 업로드</h1>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" required />
+      <button type="submit">업로드</button>
+    </form>
+
+    {% if filename %}
+    <p>✅ 업로드 성공: {{ filename }}</p>
+    <img
+      src="/static/uploads/{{ filename }}"
+      alt="업로드 이미지"
+      style="max-width: 300px; margin-top: 10px"
+    />
+    {% endif %}
+  </body>
+</html>

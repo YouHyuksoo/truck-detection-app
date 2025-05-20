@@ -1,0 +1,20 @@
+{
+  "language": "ko",
+  "style": {
+    "tone": "professional",
+    "format": "markdown"
+  },
+  "preferences": {
+    "codeStyle": "typescript",
+    "indentation": 2,
+    "maxLineLength": 80
+  },
+  "context": {
+    "includeFileContents": true,
+    "includeGitHistory": true
+  },
+  "responses": {
+    "includeExamples": true,
+    "includeExplanations": true
+  }
+}
