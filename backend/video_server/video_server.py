@@ -9,6 +9,7 @@ import asyncio
 from pathlib import Path
 import json
 import socket
+from datetime import datetime
 
 
 # === 앱 초기화 ===
@@ -17,7 +18,7 @@ meta_connections = set()  # 메타데이터 연결을 위한 세트
 broadcast_task = None
 meta_broadcast_task = None  # 메타데이터 브로드캐스트 태스크
 connection_cleanup_task = None  # 연결 정리 태스크 추가
-is_streaming = True  # 스트리밍 상태 추가
+is_streaming = True  # 항상 스트리밍 활성화 상태로 유지
 MAX_CONNECTIONS = 10  # 최대 연결 수 제한
 cap = None  # 전역 카메라 변수 추가
 
@@ -29,8 +30,6 @@ CONNECTION_TIMEOUT = 10  # 연결 타임아웃 (초)
 # === 카메라 백엔드 상수 추가 ===
 # DirectShow 백엔드 상수 (Windows에서 더 안정적일 수 있음)
 CAP_DSHOW = 700
-# MSMF 백엔드 상수
-CAP_MSMF = 1400
 
 
 # === WebSocket으로 프레임 송출 ===
@@ -103,10 +102,7 @@ async def video_broadcast():
     
     try:
         while True:
-            # 스트리밍이 일시정지된 경우 대기
-            if not is_streaming:
-                await asyncio.sleep(0.1)
-                continue
+            # 스트리밍 항상 활성화 상태
 
             # 클라이언트가 없으면 프레임 처리 생략
             if not active_connections:
@@ -134,9 +130,8 @@ async def video_broadcast():
 
             consecutive_failures = 0
 
-            # 이미지 품질 조정 (선택적)
-            jpeg_quality = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-            _, buffer = cv2.imencode(".jpg", frame, jpeg_quality)
+            # 이미지 인코딩 (원본 품질)
+            _, buffer = cv2.imencode(".jpg", frame)
             data = buffer.tobytes()
 
             del frame
@@ -168,6 +163,8 @@ async def video_broadcast():
         print("🛑 카메라 리소스 해제 완료")
 
 
+# 감지 통계 데이터 생성 기능 제거됨
+
 # === WebSocket으로 메타데이터 송출 ===
 async def meta_broadcast():
     try:
@@ -175,9 +172,10 @@ async def meta_broadcast():
             if not meta_connections:
                 await asyncio.sleep(0.5)
                 continue
-
-            # 테스트용 더미 메타데이터 생성
+            
+            # 기본 감지 메타데이터만 전송 (통계 데이터 제거)
             data = {
+                "type": "detections",
                 "detections": [
                     {
                         "x": 100,
@@ -191,6 +189,7 @@ async def meta_broadcast():
                 ]
             }
 
+            # 감지 메타데이터 전송
             disconnected = set()
             for ws in list(meta_connections):
                 try:
@@ -392,76 +391,6 @@ async def home(request: Request):
 # @app.get("/favicon.ico")
 # async def favicon():
 #     return RedirectResponse(url="/static/favicon.ico")
-
-# === 비디오 스트림 제어 함수 ===
-def control_stream(action: str) -> bool:
-    global is_streaming
-    if action == "play":
-        is_streaming = True
-        return True
-    elif action == "pause":
-        is_streaming = False
-        return True
-    return False
-
-def refresh_stream() -> bool:
-    global cap
-    if cap is not None:
-        cap.release()
-    
-    # DirectShow 백엔드로 먼저 시도
-    cap = cv2.VideoCapture(0, CAP_DSHOW)
-    if not cap.isOpened():
-        # 실패 시 기본 백엔드 시도
-        cap = cv2.VideoCapture(0)
-    
-    if cap.isOpened():
-        # 해상도 및 버퍼 설정
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    
-    return cap.isOpened()
-
-# === 비디오 제어 엔드포인트 ===
-@app.post("/control")
-async def control_video(action: str):
-    success = control_stream(action)
-    return {"success": success, "message": f"비디오 스트림 {action} {'성공' if success else '실패'}"}
-
-@app.post("/refresh")
-async def refresh_video():
-    success = refresh_stream()
-    return {"success": success, "message": "비디오 스트림 새로고침 " + ("성공" if success else "실패")}
-
-# === 스냅샷 엔드포인트 추가 ===
-@app.post("/snapshot")
-async def take_snapshot():
-    global cap
-    if cap is None or not cap.isOpened():
-        # DirectShow 백엔드로 먼저 시도
-        cap = cv2.VideoCapture(0, CAP_DSHOW)
-        if not cap.isOpened():
-            # 실패 시 기본 백엔드 시도
-            cap = cv2.VideoCapture(0)
-            
-        if not cap.isOpened():
-            return {"success": False, "message": "카메라 연결 실패"}
-    
-    # 해상도 설정
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    
-    # 여러 번 프레임을 읽어 버퍼 초기화 (더 나은 품질의 스냅샷을 위해)
-    for _ in range(3):
-        cap.read()
-    
-    ret, frame = cap.read()
-    if not ret:
-        return {"success": False, "message": "프레임 캡처 실패"}
-    
-    _, buffer = cv2.imencode(".jpg", frame)
-    return Response(content=buffer.tobytes(), media_type="image/jpeg")
 
 # === 실행 ===
 if __name__ == "__main__":

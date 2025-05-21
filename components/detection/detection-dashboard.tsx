@@ -17,29 +17,21 @@ import {
   Play,
   Pause,
   Maximize2,
-  Camera,
   Settings,
   RefreshCw,
   Download,
   AlertCircle,
   CheckCircle2,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import VideoFeed from "./video-feed";
-import DetectionStats from "./detection-stats";
-import OcrResultsList from "./ocr-results-list";
 import { useToast } from "@/hooks/use-toast";
 import {
   useDetectionApi,
-  controlVideoStream,
   toggleDetection,
   toggleOcr,
-  fetchDetectionStats,
-  fetchOcrResults,
   fetchSystemStatus,
-  captureSnapshot,
-  refreshVideoStream,
-  type DetectionStats as ApiDetectionStats,
-  type OcrResult,
   type SystemStatus,
 } from "@/lib/api/detection-api";
 
@@ -61,9 +53,11 @@ export default function DetectionDashboard() {
   const {
     isVideoConnected,
     isMetaConnected,
-    detectionStats,
-    ocrResults,
+    videoServerRunning,
+    // detectionStats와 ocrResults 제거됨
     systemStatus,
+    startVideoServer,
+    stopVideoServer,
   } = useDetectionApi();
 
   const [detectionEnabled, setDetectionEnabled] = useState(true);
@@ -110,12 +104,22 @@ export default function DetectionDashboard() {
   // 신뢰도 임계값 변경 처리
   const handleConfidenceChange = async (value: number[]) => {
     setConfidenceThreshold(value[0]);
-    await setConfidenceThreshold(value[0]);
+
+    // 슬라이더 이동이 끝나면 API로 설정 저장
+    const threshold = value[0];
+    console.log(`신뢰도 임계값 설정: ${threshold}%`);
+    await setConfidenceThreshold(threshold);
   };
 
-  // 스냅샷 캡처 처리
-  const handleCaptureSnapshot = async () => {
-    await captureSnapshot(toast);
+  // 스냅샷 캡처 처리 함수 제거됨
+
+  // 비디오 서버 토글 핸들러
+  const handleToggleVideoServer = async () => {
+    if (videoServerRunning) {
+      await stopVideoServer();
+    } else {
+      await startVideoServer();
+    }
   };
 
   return (
@@ -170,18 +174,32 @@ export default function DetectionDashboard() {
                     showDetections={detectionEnabled}
                     showOcr={ocrEnabled}
                     confidenceThreshold={confidenceThreshold / 100}
-                  />
-                  <div className="absolute bottom-4 right-4">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="bg-background/80 backdrop-blur-sm"
-                      onClick={handleCaptureSnapshot}
-                    >
-                      <Camera className="h-4 w-4 mr-2" />
-                      스냅샷
-                    </Button>
-                  </div>
+                  >
+                    <div className="absolute bottom-4 right-4 flex space-x-2 z-20">
+                      <Button
+                        variant={videoServerRunning ? "destructive" : "default"}
+                        size="sm"
+                        className={`shadow-md ${
+                          videoServerRunning
+                            ? "bg-red-500 hover:bg-red-600 text-white"
+                            : "bg-green-500 hover:bg-green-600 text-white"
+                        }`}
+                        onClick={handleToggleVideoServer}
+                      >
+                        {videoServerRunning ? (
+                          <>
+                            <PowerOff className="h-4 w-4 mr-2" />
+                            서버 종료
+                          </>
+                        ) : (
+                          <>
+                            <Power className="h-4 w-4 mr-2" />
+                            서버 시작
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </VideoFeed>
                 </div>
               </TabsContent>
 
@@ -215,7 +233,7 @@ export default function DetectionDashboard() {
               <div className="flex flex-col space-y-1">
                 <Label htmlFor="detection-toggle">객체 감지</Label>
                 <span className="text-xs text-muted-foreground">
-                  트럭 객체 감지 활성화
+                  객체 감지 활성화
                 </span>
               </div>
               <Switch
@@ -272,29 +290,6 @@ export default function DetectionDashboard() {
           </CardContent>
         </Card>
 
-        {/* Detection stats */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">감지 통계</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DetectionStats stats={detectionStats} />
-          </CardContent>
-        </Card>
-
-        {/* OCR Results */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-lg font-medium">OCR 결과</CardTitle>
-              <Badge variant="outline">{ocrResults.length}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <OcrResultsList results={ocrResults} />
-          </CardContent>
-        </Card>
-
         {/* System status */}
         <Card>
           <CardHeader className="pb-2">
@@ -340,6 +335,8 @@ export default function DetectionDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* 감지 통계 및 OCR 결과 카드 제거됨 */}
       </div>
     </div>
   );

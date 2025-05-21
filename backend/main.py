@@ -11,10 +11,57 @@ from pydantic import BaseModel
 import httpx
 import cv2
 import numpy as np
-import base64
 import json
+import subprocess
+import sys
+import platform
+import psutil
+import threading
 
 app = FastAPI()
+
+# 감지 설정 파일 경로
+SETTINGS_FILE = "backend/settings/detection_settings.json"
+
+# 설정 폴더 생성
+os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+
+# 초기 감지 설정
+DEFAULT_SETTINGS = {
+    "confidence_threshold": 0.5,  # 기본 임계값 50%
+    "enabled": True,              # 감지 활성화 여부
+    "ocr_enabled": True,          # OCR 활성화 여부
+    "last_updated": datetime.utcnow().isoformat()
+}
+
+# 설정 로드 함수
+def load_detection_settings():
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                settings = json.load(f)
+                print(f"설정 파일을 로드했습니다: {SETTINGS_FILE}")
+                return settings
+    except Exception as e:
+        print(f"설정 파일 로드 오류: {e}")
+    
+    # 파일이 없거나 오류 발생 시 기본 설정 반환
+    return DEFAULT_SETTINGS.copy()
+
+# 설정 저장 함수
+def save_detection_settings(settings):
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+        print(f"설정 파일을 저장했습니다: {SETTINGS_FILE}")
+    except Exception as e:
+        print(f"설정 파일 저장 오류: {e}")
+
+# 감지 설정 관련 전역 변수
+detection_settings = load_detection_settings()
+
+# 설정 변경에 대한 스레드 세이프 락
+settings_lock = threading.Lock()
 
 # CORS 미들웨어 추가
 app.add_middleware(
@@ -32,7 +79,6 @@ os.makedirs(STATIC_IMG_PATH, exist_ok=True)
 # 예제 이미지 파일 생성 (빈 파일)
 for i in range(1, 6):
     open(f"{STATIC_IMG_PATH}/sample{i}.jpg", "wb").close()
-open(f"{STATIC_IMG_PATH}/snapshot.jpg", "wb").close()
 
 # 테스트 이미지 파일 생성
 TEST_IMAGE_PATH = f"{STATIC_IMG_PATH}/test1.jpg"
@@ -44,6 +90,115 @@ if not os.path.exists(TEST_IMAGE_PATH):
 
 # 정적 파일 경로 마운트
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 비디오 서버 프로세스 저장 변수
+video_server_process = None
+
+# 비디오 서버 시작
+@app.post("/api/video-server/start")
+async def start_video_server():
+    global video_server_process
+    
+    # 이미 실행 중인 경우
+    if video_server_process and video_server_process.poll() is None:
+        return {"success": True, "message": "비디오 서버가 이미 실행 중입니다."}
+    
+    try:
+        # 운영체제에 따라 다른 명령어 사용
+        is_windows = platform.system() == "Windows"
+        
+        # 비디오 서버 스크립트 경로 (상대 경로)
+        video_server_path = os.path.join("backend", "video_server", "video_server.py")
+        
+        if is_windows:
+            # Windows에서는 pythonw.exe를 사용하여 백그라운드에서 실행
+            python_exec = sys.executable
+            video_server_process = subprocess.Popen(
+                [python_exec, video_server_path],
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            # Unix 계열에서는 nohup을 사용하여 백그라운드에서 실행
+            video_server_process = subprocess.Popen(
+                [sys.executable, video_server_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                preexec_fn=os.setpgrp
+            )
+        
+        # 서버가 시작될 때까지 잠시 대기
+        await asyncio.sleep(1)
+        
+        return {"success": True, "message": "비디오 서버가 성공적으로 시작되었습니다."}
+    except Exception as e:
+        return {"success": False, "message": f"비디오 서버 시작 중 오류 발생: {str(e)}"}
+
+# 비디오 서버 종료
+@app.post("/api/video-server/stop")
+async def stop_video_server():
+    global video_server_process
+    
+    if not video_server_process:
+        return {"success": True, "message": "비디오 서버가 실행 중이지 않습니다."}
+    
+    try:
+        # 운영체제에 따라 다른 종료 방식 사용
+        is_windows = platform.system() == "Windows"
+        
+        if is_windows:
+            # Windows에서는 taskkill 사용
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(video_server_process.pid)])
+        else:
+            # Unix 계열에서는 SIGTERM 신호 전송
+            try:
+                parent = psutil.Process(video_server_process.pid)
+                for child in parent.children(recursive=True):
+                    child.terminate()
+                parent.terminate()
+            except:
+                # 프로세스가 이미 종료된 경우
+                pass
+        
+        video_server_process = None
+        
+        return {"success": True, "message": "비디오 서버가 성공적으로 종료되었습니다."}
+    except Exception as e:
+        return {"success": False, "message": f"비디오 서버 종료 중 오류 발생: {str(e)}"}
+
+# 비디오 서버 상태 확인
+@app.get("/api/video-server/status")
+async def check_video_server_status():
+    global video_server_process
+    
+    # 기본 응답 - 프로세스 상태 확인
+    try:
+        # 프로세스가 존재하고 실행 중인지 확인
+        is_running = video_server_process is not None and video_server_process.poll() is None
+        
+        # 개발 환경에서는 항상 서버가 실행 중인 것으로 간주 (더 쉬운 테스트를 위해)
+        # 실제 환경에서는 이 부분을 주석 처리하거나 제거해야 함
+        if not is_running:
+            # 프로세스가 없더라도 포트가 사용 중인지 확인 (다른 방식으로 실행된 경우)
+            is_port_used = False
+            try:
+                # 포트가 사용 중인지 간단히 확인
+                async with httpx.AsyncClient() as client:
+                    response = await client.get("http://localhost:8000", timeout=0.5)
+                    is_port_used = response.status_code == 200
+            except:
+                pass
+            
+            # 포트가 사용 중이면 서버가 실행 중인 것으로 간주
+            is_running = is_port_used
+    except Exception as e:
+        print(f"서버 상태 확인 중 오류: {e}")
+        # 오류 발생 시 기본값 사용
+        is_running = False
+    
+    # 개발 중에는 항상 true 반환 (필요시 주석 해제)
+    # return {"running": True}
+    
+    return {"running": is_running}
 
 # Pydantic 모델 정의
 class CameraSettings(BaseModel):
@@ -129,8 +284,6 @@ class SystemSettings(BaseModel):
     backupInterval: int
     backupPath: str
     maxBackupCount: int
-
-VIDEO_SERVER_URL = "http://127.0.0.1:8000"
 
 # 트레이닝 관련 Pydantic 모델
 class Dataset(BaseModel):
@@ -244,40 +397,7 @@ class RoiData(BaseModel):
     minDetectionTime: int
     description: str
 
-@app.get("/api/detection/stats")
-def get_detection_stats(from_date: str = None, to_date: str = None):
-    if from_date is None:
-        from_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-    if to_date is None:
-        to_date = datetime.now().strftime("%Y-%m-%d")
-    return {
-        "detectionByTime": [
-            {"date": "00-04", "count": 1250, "success": 1180},
-            {"date": "04-08", "count": 2100, "success": 1950},
-            {"date": "08-12", "count": 5200, "success": 4900},
-            {"date": "12-16", "count": 4800, "success": 4500},
-            {"date": "16-20", "count": 6300, "success": 5900},
-            {"date": "20-24", "count": 3200, "success": 3000}
-        ],
-        "totalDetections": 24850,
-        "successfulOcr": 23430,
-        "averageConfidence": 94.3,
-        "processingFps": 23.5,
-        "lastDetection": datetime.utcnow().isoformat(),
-    }
-
-@app.get("/api/detection/ocr-results")
-def get_ocr_results(limit: int = 5):
-    return [
-        {
-            "id": i,
-            "timestamp": datetime.utcnow().isoformat(),
-            "number": f"{1000 + i}",
-            "confidence": 90 + i,
-            "imageUrl": f"/static/img/sample{i}.jpg",
-        }
-        for i in range(1, limit + 1)
-    ]
+# 감지 통계와 OCR 결과 API 제거됨
 
 @app.get("/api/detection/system-status")
 def get_system_status():
@@ -290,49 +410,97 @@ def get_system_status():
         "systemLoadPercentage": 35,
     }
 
-@app.post("/api/detection/snapshot")
-def capture_snapshot():
-    return {"success": True, "imageUrl": "/static/img/snapshot.jpg"}
+# 스냅샷 API 제거됨
 
-@app.post("/api/detection/stream/refresh")
-async def refresh_detection_stream():
-    return {"success": True}
+# refresh API 제거됨
 
-@app.post("/api/video/control")
-async def control_video_stream(request: Request):
-    try:
-        data = await request.json()
-        action = data.get("action")
-        
-        if action not in ["play", "pause"]:
-            return {"success": False, "message": "잘못된 액션입니다."}
-            
-        # video_server에 제어 명령 전달
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{VIDEO_SERVER_URL}/control", params={"action": action})
-            if response.status_code != 200:
-                return {"success": False, "message": "비디오 서버 통신 실패"}
-            
-            result = response.json()
-            return result
-            
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"비디오 스트림 제어 실패: {str(e)}"
-        }
+# 비디오 제어 API 제거됨
 
 @app.post("/api/detection/settings")
-async def update_detection_settings(enabled: bool):
-    return {"success": True, "enabled": enabled}
+async def update_detection_settings(request: Request):
+    try:
+        # 요청 본문에서 데이터 읽기
+        data = await request.json()
+        enabled = data.get("enabled", True)  # 기본값은 True
+        
+        # 스레드 세이프하게 전역 설정 변수 업데이트
+        with settings_lock:
+            detection_settings["enabled"] = enabled
+            detection_settings["last_updated"] = datetime.utcnow().isoformat()
+            # 변경된 설정 저장
+            save_detection_settings(detection_settings)
+        
+        print(f"객체 감지 설정 변경: {enabled}")
+        
+        return {"success": True, "enabled": enabled}
+    except Exception as e:
+        print(f"객체 감지 설정 오류: {str(e)}")
+        return {"success": False, "message": str(e)}
 
 @app.post("/api/ocr/settings")
-async def update_ocr_settings(enabled: bool):
-    return {"success": True, "enabled": enabled}
+async def update_ocr_settings(request: Request):
+    try:
+        # 요청 본문에서 데이터 읽기
+        data = await request.json()
+        enabled = data.get("enabled", True)  # 기본값은 True
+        
+        # 스레드 세이프하게 전역 설정 변수 업데이트
+        with settings_lock:
+            detection_settings["ocr_enabled"] = enabled
+            detection_settings["last_updated"] = datetime.utcnow().isoformat()
+            # 변경된 설정 저장
+            save_detection_settings(detection_settings)
+        
+        print(f"OCR 설정 변경: {enabled}")
+        
+        return {"success": True, "enabled": enabled}
+    except Exception as e:
+        print(f"OCR 설정 오류: {str(e)}")
+        return {"success": False, "message": str(e)}
+
+@app.get("/api/detection/settings")
+async def get_detection_settings():
+    """현재 감지 설정 정보를 반환합니다."""
+    with settings_lock:
+        # 현재 감지 설정을 복사하여 반환
+        current_settings = detection_settings.copy()
+    
+    # 백분율 값도 추가
+    current_settings["confidence_threshold_percent"] = current_settings["confidence_threshold"] * 100
+    
+    return current_settings
 
 @app.post("/api/detection/threshold")
-async def update_detection_threshold(threshold: float):
-    return {"success": True, "threshold": threshold}
+async def update_detection_threshold(request: Request):
+    try:
+        # 요청 본문에서 데이터 읽기
+        data = await request.json()
+        threshold = data.get("threshold", 0.5)  # 기본값은 0.5 (50%)
+        
+        # 임계값 검증 (0-1 범위)
+        if not 0 <= threshold <= 1:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "임계값은 0과 1 사이여야 합니다."}
+            )
+        
+        # 스레드 세이프하게 전역 설정 변수 업데이트
+        with settings_lock:
+            detection_settings["confidence_threshold"] = threshold
+            detection_settings["last_updated"] = datetime.utcnow().isoformat()
+            # 변경된 설정 저장
+            save_detection_settings(detection_settings)
+        
+        print(f"감지 신뢰도 임계값 설정: {threshold:.2f} ({threshold*100:.0f}%)")
+        
+        # 설정 성공
+        return {"success": True, "threshold": threshold, "percentage": threshold * 100}
+    except Exception as e:
+        print(f"감지 신뢰도 임계값 설정 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"임계값 설정 중 오류가 발생했습니다: {str(e)}"}
+        )
 
 # PLC 설정 가져오기
 @app.get("/api/plc/settings")
@@ -568,7 +736,7 @@ async def ws_logs_subscribe(websocket: WebSocket):
             "recognizedNumber": "1234",
             "confidence": 95,
             "roiName": "입구 영역",
-            "imageUrl": "/static/img/snapshot.jpg",
+            "imageUrl": "/static/img/test1.jpg",
             "processingTime": 60,
             "status": "success",
             "sentToPLC": True,

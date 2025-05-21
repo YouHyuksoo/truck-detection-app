@@ -1,18 +1,18 @@
-"use client"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { Slider } from "@/components/ui/slider"
-import { Separator } from "@/components/ui/separator"
-import { Settings } from "lucide-react"
+"use client";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Separator } from "@/components/ui/separator";
+import { Settings } from "lucide-react";
 
 interface DetectionControlsProps {
-  onDetectionToggle: (enabled: boolean) => void
-  onOcrToggle: (enabled: boolean) => void
-  onConfidenceChange: (value: number) => void
-  detectionEnabled: boolean
-  ocrEnabled: boolean
-  confidenceThreshold: number
+  onDetectionToggle: (enabled: boolean) => void;
+  onOcrToggle: (enabled: boolean) => void;
+  onConfidenceChange: (value: number) => void;
+  detectionEnabled: boolean;
+  ocrEnabled: boolean;
+  confidenceThreshold: number;
 }
 
 export default function DetectionControls({
@@ -28,9 +28,15 @@ export default function DetectionControls({
       <div className="flex items-center justify-between">
         <div className="flex flex-col space-y-1">
           <Label htmlFor="detection-toggle">객체 감지</Label>
-          <span className="text-xs text-muted-foreground">트럭 객체 감지 활성화</span>
+          <span className="text-xs text-muted-foreground">
+            객체 감지 활성화
+          </span>
         </div>
-        <Switch id="detection-toggle" checked={detectionEnabled} onCheckedChange={onDetectionToggle} />
+        <Switch
+          id="detection-toggle"
+          checked={detectionEnabled}
+          onCheckedChange={onDetectionToggle}
+        />
       </div>
 
       <Separator />
@@ -38,9 +44,16 @@ export default function DetectionControls({
       <div className="flex items-center justify-between">
         <div className="flex flex-col space-y-1">
           <Label htmlFor="ocr-toggle">OCR 처리</Label>
-          <span className="text-xs text-muted-foreground">숫자 인식 활성화</span>
+          <span className="text-xs text-muted-foreground">
+            숫자 인식 활성화
+          </span>
         </div>
-        <Switch id="ocr-toggle" checked={ocrEnabled} onCheckedChange={onOcrToggle} disabled={!detectionEnabled} />
+        <Switch
+          id="ocr-toggle"
+          checked={ocrEnabled}
+          onCheckedChange={onOcrToggle}
+          disabled={!detectionEnabled}
+        />
       </div>
 
       <Separator />
@@ -71,5 +84,5 @@ export default function DetectionControls({
         고급 설정
       </Button>
     </div>
-  )
+  );
 }

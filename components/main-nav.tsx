@@ -1,17 +1,29 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Monitor, Settings, Database, FileText, BookOpen, Target, Cpu, BarChart2, Menu, X, Truck } from "lucide-react"
-import { useState } from "react"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { ModeToggle } from "@/components/mode-toggle"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Monitor,
+  Settings,
+  Database,
+  FileText,
+  BookOpen,
+  Target,
+  Cpu,
+  BarChart2,
+  Menu,
+  X,
+  Truck,
+} from "lucide-react";
+import { useState } from "react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export default function MainNav() {
-  const pathname = usePathname()
-  const [open, setOpen] = useState(false)
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   const routes = [
     {
@@ -62,7 +74,7 @@ export default function MainNav() {
       icon: BarChart2,
       active: pathname === "/stats",
     },
-  ]
+  ];
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background">
@@ -86,10 +98,14 @@ export default function MainNav() {
                     <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full blur opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
                   </div>
                   <span className="font-bold hidden md:inline-block bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    트럭 감지 시스템
+                    객체 감지 시스템
                   </span>
                 </Link>
-                <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setOpen(false)}
+                >
                   <X className="h-5 w-5" />
                   <span className="sr-only">Close</span>
                 </Button>
@@ -102,7 +118,9 @@ export default function MainNav() {
                     onClick={() => setOpen(false)}
                     className={cn(
                       "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium",
-                      route.active ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                      route.active
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
                     )}
                   >
                     <route.icon className="h-5 w-5" />
@@ -121,7 +139,7 @@ export default function MainNav() {
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full blur opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
             </div>
             <span className="font-bold hidden md:inline-block bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              트럭 감지 시스템
+              객체 감지 시스템
             </span>
           </Link>
         </div>
@@ -132,7 +150,7 @@ export default function MainNav() {
               href={route.href}
               className={cn(
                 "flex items-center gap-1 text-sm font-medium transition-colors hover:text-primary",
-                route.active ? "text-primary" : "text-muted-foreground",
+                route.active ? "text-primary" : "text-muted-foreground"
               )}
             >
               <route.icon className="h-4 w-4" />
@@ -145,5 +163,5 @@ export default function MainNav() {
         </div>
       </div>
     </header>
-  )
+  );
 }
