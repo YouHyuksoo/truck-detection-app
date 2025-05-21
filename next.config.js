@@ -33,6 +33,11 @@ const nextConfig = {
       },
     ];
   },
+
+  // 환경 변수 설정
+  env: {
+    NEXT_PUBLIC_API_BASE_URL: "http://localhost:8010",
+  },
 };
 
 module.exports = nextConfig;

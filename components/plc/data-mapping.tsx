@@ -1,8 +1,15 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -10,62 +17,90 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AccessType, type DataMapping as DataMappingType, DataType, ProtocolType } from "@/types/plc"
-import { PlusCircle, Pencil, Trash2, Loader2 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { usePLCApi } from "@/lib/api/plc-api"
-import { useToast } from "@/hooks/use-toast"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AccessType,
+  type DataMapping as DataMappingType,
+  DataType,
+  ProtocolType,
+} from "@/types/plc";
+import { PlusCircle, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  getDataMappings,
+  addDataMapping,
+  updateDataMapping,
+  deleteDataMapping,
+} from "@/lib/api/plc-api";
+import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface DataMappingProps {
-  mappings: DataMappingType[]
-  protocol: ProtocolType
-  deviceType: string
-  onUpdate: (mappings: DataMappingType[]) => void
+  mappings: DataMappingType[];
+  protocol: ProtocolType;
+  deviceType: string;
+  onUpdate: (mappings: DataMappingType[]) => Promise<void>;
 }
 
-export function DataMapping({ mappings: initialMappings, protocol, deviceType, onUpdate }: DataMappingProps) {
-  const [mappings, setMappings] = useState<DataMappingType[]>(initialMappings)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [currentMapping, setCurrentMapping] = useState<DataMappingType | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const plcApi = usePLCApi()
-  const { toast } = useToast()
+export function DataMapping({
+  mappings: initialMappings,
+  protocol,
+  deviceType,
+  onUpdate,
+}: DataMappingProps) {
+  const [mappings, setMappings] = useState<DataMappingType[]>(initialMappings);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [currentMapping, setCurrentMapping] = useState<DataMappingType | null>(
+    null
+  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // 초기 데이터 로드
   useEffect(() => {
     const loadMappings = async () => {
       try {
-        setIsLoading(true)
-        setError(null)
-        const data = await plcApi.getDataMappings()
-        setMappings(data)
-        onUpdate(data)
+        setIsLoading(true);
+        setError(null);
+        const data = await getDataMappings();
+        setMappings(data);
+        await onUpdate(data);
       } catch (err) {
-        setError("데이터 매핑을 로드하는 중 오류가 발생했습니다.")
+        setError("데이터 매핑을 로드하는 중 오류가 발생했습니다.");
         toast({
           title: "데이터 매핑 로드 오류",
           description: (err as Error).message,
           variant: "destructive",
-        })
+        });
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
     // 초기 값이 비어 있는 경우에만 로드
     if (initialMappings.length === 0) {
-      loadMappings()
+      loadMappings();
     }
-  }, [initialMappings, plcApi, toast, onUpdate])
+  }, [initialMappings, toast, onUpdate]);
 
   const handleAddMapping = () => {
     setCurrentMapping({
@@ -75,92 +110,94 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
       dataType: DataType.WORD,
       access: AccessType.READ,
       description: "",
-    })
-    setIsDialogOpen(true)
-  }
+    });
+    setIsDialogOpen(true);
+  };
 
   const handleEditMapping = (mapping: DataMappingType) => {
-    setCurrentMapping({ ...mapping })
-    setIsDialogOpen(true)
-  }
+    setCurrentMapping({ ...mapping });
+    setIsDialogOpen(true);
+  };
 
   const handleDeleteMapping = async (id: string) => {
     try {
-      setIsLoading(true)
-      await plcApi.deleteDataMapping(id)
-      const updatedMappings = mappings.filter((m) => m.id !== id)
-      setMappings(updatedMappings)
-      onUpdate(updatedMappings)
+      setIsLoading(true);
+      await deleteDataMapping(id);
+      const updatedMappings = mappings.filter((m) => m.id !== id);
+      setMappings(updatedMappings);
+      await onUpdate(updatedMappings);
       toast({
         title: "데이터 매핑 삭제",
         description: "데이터 매핑이 성공적으로 삭제되었습니다.",
-      })
+      });
     } catch (err) {
       toast({
         title: "데이터 매핑 삭제 오류",
         description: (err as Error).message,
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleSaveMapping = async () => {
-    if (!currentMapping) return
+    if (!currentMapping) return;
 
     try {
-      setIsSubmitting(true)
-      let savedMapping: DataMappingType
+      setIsSubmitting(true);
+      let savedMapping: DataMappingType;
 
       if (mappings.some((m) => m.id === currentMapping.id)) {
         // 기존 매핑 업데이트
-        savedMapping = await plcApi.updateDataMapping(currentMapping)
-        const updatedMappings = mappings.map((m) => (m.id === savedMapping.id ? savedMapping : m))
-        setMappings(updatedMappings)
-        onUpdate(updatedMappings)
+        savedMapping = await updateDataMapping(currentMapping);
+        const updatedMappings = mappings.map((m) =>
+          m.id === savedMapping.id ? savedMapping : m
+        );
+        setMappings(updatedMappings);
+        await onUpdate(updatedMappings);
         toast({
           title: "데이터 매핑 업데이트",
           description: "데이터 매핑이 성공적으로 업데이트되었습니다.",
-        })
+        });
       } else {
         // 새 매핑 추가
-        savedMapping = await plcApi.addDataMapping(currentMapping)
-        const updatedMappings = [...mappings, savedMapping]
-        setMappings(updatedMappings)
-        onUpdate(updatedMappings)
+        savedMapping = await addDataMapping(currentMapping);
+        const updatedMappings = [...mappings, savedMapping];
+        setMappings(updatedMappings);
+        await onUpdate(updatedMappings);
         toast({
           title: "데이터 매핑 추가",
           description: "새 데이터 매핑이 성공적으로 추가되었습니다.",
-        })
+        });
       }
 
-      setIsDialogOpen(false)
-      setCurrentMapping(null)
+      setIsDialogOpen(false);
+      setCurrentMapping(null);
     } catch (err) {
       toast({
         title: "데이터 매핑 저장 오류",
         description: (err as Error).message,
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const getAddressPlaceholder = () => {
     switch (protocol) {
       case ProtocolType.MODBUS_TCP:
       case ProtocolType.MODBUS_RTU:
-        return "예: 400001 (홀딩 레지스터 1)"
+        return "예: 400001 (홀딩 레지스터 1)";
       case ProtocolType.S7:
-        return "예: DB1.DBX0.0 (데이터 블록 1, 바이트 0, 비트 0)"
+        return "예: DB1.DBX0.0 (데이터 블록 1, 바이트 0, 비트 0)";
       case ProtocolType.ETHERNET_IP:
-        return "예: N7:0 (정수 파일 7, 오프셋 0)"
+        return "예: N7:0 (정수 파일 7, 오프셋 0)";
       default:
-        return "PLC 주소 입력"
+        return "PLC 주소 입력";
     }
-  }
+  };
 
   const getAddressHelp = () => {
     switch (protocol) {
@@ -176,7 +213,7 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
               <li>4xxxxx: 홀딩 레지스터 (워드, 읽기/쓰기)</li>
             </ul>
           </>
-        )
+        );
       case ProtocolType.S7:
         return (
           <>
@@ -190,11 +227,11 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
               <li>C/Z: 카운터</li>
             </ul>
           </>
-        )
+        );
       default:
-        return "PLC 주소를 입력하세요."
+        return "PLC 주소를 입력하세요.";
     }
-  }
+  };
 
   if (isLoading && mappings.length === 0) {
     return (
@@ -202,7 +239,7 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <span className="ml-2">데이터 매핑을 로드하는 중...</span>
       </div>
-    )
+    );
   }
 
   if (error && mappings.length === 0) {
@@ -210,7 +247,7 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
       <Alert variant="destructive" className="my-4">
         <AlertDescription>{error}</AlertDescription>
       </Alert>
-    )
+    );
   }
 
   return (
@@ -218,7 +255,9 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-medium">데이터 매핑 설정</h3>
-          <p className="text-sm text-muted-foreground">PLC 메모리 주소와 시스템 데이터 간의 매핑을 설정합니다.</p>
+          <p className="text-sm text-muted-foreground">
+            PLC 메모리 주소와 시스템 데이터 간의 매핑을 설정합니다.
+          </p>
         </div>
         <Button onClick={handleAddMapping} disabled={isLoading}>
           <PlusCircle className="mr-2 h-4 w-4" />
@@ -229,13 +268,17 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
       <Card>
         <CardHeader>
           <CardTitle>데이터 매핑 목록</CardTitle>
-          <CardDescription>설정된 모든 데이터 매핑을 관리합니다.</CardDescription>
+          <CardDescription>
+            설정된 모든 데이터 매핑을 관리합니다.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {mappings.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <p>설정된 데이터 매핑이 없습니다.</p>
-              <p className="text-sm mt-2">&quot;매핑 추가&quot; 버튼을 클릭하여 새 매핑을 추가하세요.</p>
+              <p className="text-sm mt-2">
+                &quot;매핑 추가&quot; 버튼을 클릭하여 새 매핑을 추가하세요.
+              </p>
             </div>
           ) : (
             <ScrollArea className="h-[400px]">
@@ -253,7 +296,9 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
                 <TableBody>
                   {mappings.map((mapping) => (
                     <TableRow key={mapping.id}>
-                      <TableCell className="font-medium">{mapping.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {mapping.name}
+                      </TableCell>
                       <TableCell>{mapping.plcAddress}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
@@ -272,13 +317,14 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
                             mapping.access === AccessType.READ
                               ? "secondary"
                               : mapping.access === AccessType.WRITE
-                                ? "default"
-                                : "outline"
+                              ? "default"
+                              : "outline"
                           }
                         >
                           {mapping.access === AccessType.READ && "읽기"}
                           {mapping.access === AccessType.WRITE && "쓰기"}
-                          {mapping.access === AccessType.READ_WRITE && "읽기/쓰기"}
+                          {mapping.access === AccessType.READ_WRITE &&
+                            "읽기/쓰기"}
                         </Badge>
                       </TableCell>
                       <TableCell>{mapping.description}</TableCell>
@@ -315,9 +361,13 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
-              {currentMapping && currentMapping.id.startsWith("mapping-") ? "데이터 매핑 추가" : "데이터 매핑 편집"}
+              {currentMapping && currentMapping.id.startsWith("mapping-")
+                ? "데이터 매핑 추가"
+                : "데이터 매핑 편집"}
             </DialogTitle>
-            <DialogDescription>PLC 메모리 주소와 시스템 데이터 간의 매핑 정보를 입력하세요.</DialogDescription>
+            <DialogDescription>
+              PLC 메모리 주소와 시스템 데이터 간의 매핑 정보를 입력하세요.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
@@ -352,7 +402,9 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
                   }
                   placeholder={getAddressPlaceholder()}
                 />
-                <div className="text-xs text-muted-foreground">{getAddressHelp()}</div>
+                <div className="text-xs text-muted-foreground">
+                  {getAddressHelp()}
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
@@ -401,7 +453,9 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
                 <SelectContent>
                   <SelectItem value={AccessType.READ}>읽기</SelectItem>
                   <SelectItem value={AccessType.WRITE}>쓰기</SelectItem>
-                  <SelectItem value={AccessType.READ_WRITE}>읽기/쓰기</SelectItem>
+                  <SelectItem value={AccessType.READ_WRITE}>
+                    읽기/쓰기
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -421,7 +475,8 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
                 className="col-span-3"
               />
             </div>
-            {(currentMapping?.dataType === DataType.INT || currentMapping?.dataType === DataType.REAL) && (
+            {(currentMapping?.dataType === DataType.INT ||
+              currentMapping?.dataType === DataType.REAL) && (
               <>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="scaleFactor" className="text-right">
@@ -480,8 +535,8 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
             <Button
               variant="outline"
               onClick={() => {
-                setIsDialogOpen(false)
-                setCurrentMapping(null)
+                setIsDialogOpen(false);
+                setCurrentMapping(null);
               }}
               disabled={isSubmitting}
             >
@@ -501,5 +556,5 @@ export function DataMapping({ mappings: initialMappings, protocol, deviceType, o
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

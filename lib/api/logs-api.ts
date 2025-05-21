@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { OcrLogEntry, OcrLogFilter } from "@/types/logs";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010";
 
 /**
  * OCR 로그 목록을 가져오는 함수
@@ -13,21 +13,31 @@ const API_BASE_URL =
  * @returns OCR 로그 목록
  */
 export async function fetchOcrLogs(
-  filters: OcrLogFilter
-): Promise<OcrLogEntry[]> {
-  const response = await fetch(`${API_BASE_URL}/logs/ocr`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(filters),
-  });
+  filters: {
+    startDate?: string;
+    endDate?: string;
+    confidence?: number;
+    text?: string;
+  } = {}
+): Promise<any[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/logs/ocr`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(filters),
+    });
 
-  if (!response.ok) {
-    throw new Error(`HTTP 오류: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("OCR 로그 조회 중 오류 발생:", error);
+    throw error;
   }
-
-  return response.json();
 }
 
 /**
@@ -40,19 +50,27 @@ export async function fetchOcrLogStats(dateRange: {
   from: Date;
   to: Date;
 }): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/logs/stats`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(dateRange),
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/logs/stats`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`HTTP 오류: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("OCR 로그 통계 조회 중 오류 발생:", error);
+    throw error;
   }
-
-  return response.json();
 }
 
 /**
@@ -68,15 +86,18 @@ export async function exportOcrLogs(
 ): Promise<string | boolean> {
   const { toast } = useToast();
   try {
-    const response = await fetch(`${API_BASE_URL}/logs/export`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ format, filters }),
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/api/logs/ocr/export?format=${format}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(filters),
+      }
+    );
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
     const data = await response.json();
     toast({
@@ -104,7 +125,7 @@ export function subscribeToNewLogs(
   callback: (log: OcrLogEntry) => void
 ): () => void {
   const ws = new WebSocket(
-    `${API_BASE_URL.replace("http", "ws")}/logs/subscribe`
+    `${API_BASE_URL.replace("http", "ws")}/api/logs/ocr/ws`
   );
   ws.onmessage = (event) => {
     try {

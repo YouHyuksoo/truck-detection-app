@@ -5,7 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 
 // API 기본 URL 설정
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010";
+
+// 비디오 서버 URL 설정
+const VIDEO_SERVER_URL =
+  process.env.NEXT_PUBLIC_VIDEO_SERVER_URL || "http://localhost:8000";
 
 // WebSocket URL 상수
 const WS_VIDEO_URL =
@@ -51,7 +55,10 @@ export interface WebSocketConnection {
   isConnected: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
-  onConnectionChange?: (isConnected: boolean) => void;
+  onConnectionChange?: (
+    isConnected: boolean,
+    connectionType?: "video" | "meta"
+  ) => void;
 }
 
 export interface Detection {
@@ -75,6 +82,311 @@ export interface ToastFunction {
   }): void;
 }
 
+// === WebSocket 연결 상태를 전역적으로 관리하기 위한 싱글톤 객체 ===
+class WebSocketManager {
+  private static instance: WebSocketManager | null = null;
+
+  private videoWs: WebSocket | null = null;
+  private metaWs: WebSocket | null = null;
+  private isVideoConnecting: boolean = false;
+  private isMetaConnecting: boolean = false;
+  private videoReconnectAttempts: number = 0;
+  private metaReconnectAttempts: number = 0;
+  private videoPingInterval: NodeJS.Timeout | null = null;
+  private metaPingInterval: NodeJS.Timeout | null = null;
+
+  private videoConnectionListeners: Set<(connected: boolean) => void> =
+    new Set();
+  private metaConnectionListeners: Set<(connected: boolean) => void> =
+    new Set();
+  private messageListeners: Set<(data: any) => void> = new Set();
+
+  public isVideoConnected: boolean = false;
+  public isMetaConnected: boolean = false;
+
+  // 재연결 관련 상수
+  private readonly MAX_RECONNECT_ATTEMPTS = 3;
+  private readonly RECONNECT_DELAY = 3000; // ms
+
+  private constructor() {}
+
+  public static getInstance(): WebSocketManager {
+    if (!WebSocketManager.instance) {
+      WebSocketManager.instance = new WebSocketManager();
+    }
+    return WebSocketManager.instance;
+  }
+
+  // 비디오 WebSocket 연결
+  public async connectVideo(toast: ToastFunction): Promise<void> {
+    if (this.isVideoConnecting) {
+      console.log("비디오 WebSocket 연결 시도 중입니다.");
+      return;
+    }
+
+    if (this.videoWs?.readyState === WebSocket.OPEN) {
+      console.log("비디오 WebSocket이 이미 연결되어 있습니다.");
+      return;
+    }
+
+    this.isVideoConnecting = true;
+    this.videoReconnectAttempts = 0;
+
+    try {
+      this.videoWs = new WebSocket(WS_VIDEO_URL);
+
+      this.videoWs.onopen = () => {
+        console.log("비디오 WebSocket 연결됨");
+        this.videoReconnectAttempts = 0;
+        this.isVideoConnecting = false;
+        this.isVideoConnected = true;
+
+        // 모든 리스너에게 알림
+        this.videoConnectionListeners.forEach((listener) => listener(true));
+
+        if (this.videoWs?.readyState === WebSocket.OPEN) {
+          this.videoWs.send("ping");
+        }
+      };
+
+      this.videoWs.onerror = (error) => {
+        console.error("비디오 WebSocket 오류:", error);
+        this.isVideoConnecting = false;
+        toast({
+          title: "연결 오류",
+          description: "비디오 스트림 연결에 실패했습니다.",
+          variant: "destructive",
+        });
+      };
+
+      this.videoWs.onclose = () => {
+        console.log("비디오 WebSocket 연결 종료");
+        this.isVideoConnecting = false;
+        this.isVideoConnected = false;
+
+        // 모든 리스너에게 알림
+        this.videoConnectionListeners.forEach((listener) => listener(false));
+
+        if (this.videoReconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+          setTimeout(() => {
+            this.videoReconnectAttempts++;
+            this.connectVideo(toast);
+          }, this.RECONNECT_DELAY);
+        } else {
+          toast({
+            title: "연결 종료",
+            description: "비디오 스트림 연결이 종료되었습니다.",
+            variant: "destructive",
+          });
+        }
+      };
+
+      this.videoWs.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          // 모든 메시지 리스너에게 알림
+          this.messageListeners.forEach((listener) => listener(data));
+        } catch (e) {
+          // 바이너리 데이터인 경우 프레임 처리
+          const blob = new Blob([event.data], { type: "image/jpeg" });
+          // 프레임 업데이트 리스너에게 알림
+          this.messageListeners.forEach((listener) =>
+            listener({
+              type: "frame",
+              frame: blob,
+            })
+          );
+        }
+      };
+
+      // ping 간격 설정
+      if (this.videoPingInterval) clearInterval(this.videoPingInterval);
+      this.videoPingInterval = setInterval(() => {
+        if (this.videoWs?.readyState === WebSocket.OPEN) {
+          this.videoWs.send("ping");
+        }
+      }, 30000);
+    } catch (error) {
+      console.error("비디오 WebSocket 연결 오류:", error);
+      this.isVideoConnecting = false;
+      throw error;
+    }
+  }
+
+  // 메타 WebSocket 연결
+  public async connectMeta(toast: ToastFunction): Promise<void> {
+    if (this.isMetaConnecting) {
+      console.log("메타 WebSocket 연결 시도 중입니다.");
+      return;
+    }
+
+    if (this.metaWs?.readyState === WebSocket.OPEN) {
+      console.log("메타 WebSocket이 이미 연결되어 있습니다.");
+      return;
+    }
+
+    this.isMetaConnecting = true;
+    this.metaReconnectAttempts = 0;
+
+    try {
+      this.metaWs = new WebSocket(WS_META_URL);
+
+      this.metaWs.onopen = () => {
+        console.log("메타 WebSocket 연결됨");
+        this.metaReconnectAttempts = 0;
+        this.isMetaConnecting = false;
+        this.isMetaConnected = true;
+
+        // 모든 리스너에게 알림
+        this.metaConnectionListeners.forEach((listener) => listener(true));
+
+        if (this.metaWs?.readyState === WebSocket.OPEN) {
+          this.metaWs.send("ping");
+        }
+      };
+
+      this.metaWs.onerror = (error) => {
+        console.error("메타 WebSocket 오류:", error);
+        this.isMetaConnecting = false;
+        toast({
+          title: "연결 오류",
+          description: "메타데이터 스트림 연결에 실패했습니다.",
+          variant: "destructive",
+        });
+      };
+
+      this.metaWs.onclose = () => {
+        console.log("메타 WebSocket 연결 종료");
+        this.isMetaConnecting = false;
+        this.isMetaConnected = false;
+
+        // 모든 리스너에게 알림
+        this.metaConnectionListeners.forEach((listener) => listener(false));
+
+        if (this.metaReconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+          setTimeout(() => {
+            this.metaReconnectAttempts++;
+            this.connectMeta(toast);
+          }, this.RECONNECT_DELAY);
+        } else {
+          toast({
+            title: "연결 종료",
+            description: "메타데이터 스트림 연결이 종료되었습니다.",
+            variant: "destructive",
+          });
+        }
+      };
+
+      this.metaWs.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          // 모든 메시지 리스너에게 알림
+          this.messageListeners.forEach((listener) => listener(data));
+        } catch (e) {
+          console.error("메타데이터 메시지 파싱 오류:", e);
+        }
+      };
+
+      // ping 간격 설정
+      if (this.metaPingInterval) clearInterval(this.metaPingInterval);
+      this.metaPingInterval = setInterval(() => {
+        if (this.metaWs?.readyState === WebSocket.OPEN) {
+          this.metaWs.send("ping");
+        }
+      }, 30000);
+    } catch (error) {
+      console.error("메타 WebSocket 연결 오류:", error);
+      this.isMetaConnecting = false;
+      throw error;
+    }
+  }
+
+  // 연결 리스너 등록
+  public addVideoConnectionListener(
+    listener: (connected: boolean) => void
+  ): () => void {
+    this.videoConnectionListeners.add(listener);
+    // 현재 상태 즉시 알림
+    listener(this.isVideoConnected);
+
+    // 정리 함수 반환
+    return () => {
+      this.videoConnectionListeners.delete(listener);
+    };
+  }
+
+  public addMetaConnectionListener(
+    listener: (connected: boolean) => void
+  ): () => void {
+    this.metaConnectionListeners.add(listener);
+    // 현재 상태 즉시 알림
+    listener(this.isMetaConnected);
+
+    // 정리 함수 반환
+    return () => {
+      this.metaConnectionListeners.delete(listener);
+    };
+  }
+
+  // 메시지 리스너 등록
+  public addMessageListener(listener: (data: any) => void): () => void {
+    this.messageListeners.add(listener);
+
+    // 정리 함수 반환
+    return () => {
+      this.messageListeners.delete(listener);
+    };
+  }
+
+  // 모든 연결 종료
+  public disconnect(): void {
+    // 타이머 정리
+    if (this.videoPingInterval) {
+      clearInterval(this.videoPingInterval);
+      this.videoPingInterval = null;
+    }
+
+    if (this.metaPingInterval) {
+      clearInterval(this.metaPingInterval);
+      this.metaPingInterval = null;
+    }
+
+    // 연결 종료
+    if (this.videoWs) {
+      this.videoWs.close();
+      this.videoWs = null;
+    }
+
+    if (this.metaWs) {
+      this.metaWs.close();
+      this.metaWs = null;
+    }
+
+    this.isVideoConnected = false;
+    this.isMetaConnected = false;
+    this.isVideoConnecting = false;
+    this.isMetaConnecting = false;
+
+    // 모든 리스너에게 알림
+    this.videoConnectionListeners.forEach((listener) => listener(false));
+    this.metaConnectionListeners.forEach((listener) => listener(false));
+  }
+}
+
+// 글로벌 WebSocket 매니저 인스턴스
+const wsManager =
+  typeof window !== "undefined" ? WebSocketManager.getInstance() : null;
+
+// 웹 페이지 로드 시 자동 연결 시도 (클라이언트 사이드에서만)
+if (typeof window !== "undefined") {
+  window.addEventListener("load", () => {
+    // 페이지 로드 시 토스트 참조가 없으므로 더미 함수 사용
+    const dummyToast: ToastFunction = () => {};
+    wsManager?.connectVideo(dummyToast);
+    wsManager?.connectMeta(dummyToast);
+  });
+}
+
 /**
  * 통합 감지 API 훅
  *
@@ -82,13 +394,13 @@ export interface ToastFunction {
  * 컴포넌트에서 이 훅을 사용하면 모든 API 기능에 접근할 수 있습니다.
  */
 export function useDetectionApi() {
-  const [isConnected, setIsConnected] = useState(false);
+  const [isVideoConnected, setIsVideoConnected] = useState(false);
+  const [isMetaConnected, setIsMetaConnected] = useState(false);
   const [detectionStats, setDetectionStats] = useState<DetectionStats>({
     totalDetections: 0,
     successfulOcr: 0,
     averageConfidence: 0,
     processingFps: 0,
-    // ⚠️ 수정: 고정된 타임스탬프 사용
     lastDetection: "아직 감지되지 않음",
   });
   const [ocrResults, setOcrResults] = useState<OcrResult[]>([]);
@@ -103,225 +415,82 @@ export function useDetectionApi() {
   const [detections, setDetections] = useState<Detection[]>([]);
   const { toast } = useToast();
 
-  // WebSocket 연결 객체
-  const wsConnection = useWebSocketConnection(
-    // 연결 상태 변경 콜백
-    (connected) => {
-      setIsConnected(connected);
-    },
-    // 메시지 수신 콜백
-    (data) => {
-      // 메시지 타입에 따라 처리
-      if (data.type === "stats") {
+  // 웹소켓 매니저와 연결 상태 동기화
+  useEffect(() => {
+    if (typeof window === "undefined" || !wsManager) return;
+
+    // 비디오 연결 상태 리스너
+    const videoCleanup = wsManager.addVideoConnectionListener((connected) => {
+      setIsVideoConnected(connected);
+    });
+
+    // 메타 연결 상태 리스너
+    const metaCleanup = wsManager.addMetaConnectionListener((connected) => {
+      setIsMetaConnected(connected);
+    });
+
+    // 메시지 리스너
+    const messageCleanup = wsManager.addMessageListener((data) => {
+      if (data.type === "frame") {
+        setFrame(data.frame);
+      } else if (data.type === "stats") {
         setDetectionStats(data.stats);
       } else if (data.type === "ocrResult") {
         setOcrResults((prev) => [data.result, ...prev].slice(0, 5));
       } else if (data.type === "systemStatus") {
         setSystemStatus(data.status);
+      } else if (data.type === "detections") {
+        setDetections(data.detections);
       }
-    }
-  );
+    });
+
+    // 연결 시도 (이미 연결 중이거나 연결된 경우 아무 일도 일어나지 않음)
+    wsManager.connectVideo(toast);
+    wsManager.connectMeta(toast);
+
+    // 컴포넌트 언마운트 시 리스너만 정리 (연결은 유지)
+    return () => {
+      videoCleanup();
+      metaCleanup();
+      messageCleanup();
+    };
+  }, [toast]);
 
   // 컴포넌트 마운트 시 초기 데이터 로드
   useEffect(() => {
     // 초기 데이터 로드
     const loadInitialData = async () => {
       try {
-        const stats = await fetchDetectionStats();
-        setDetectionStats(stats);
+        // 초기 데이터 로드는 WebSocket 연결 후에 수행
+        if (isVideoConnected) {
+          const stats = await fetchDetectionStats();
+          setDetectionStats(stats);
 
-        const results = await fetchOcrResults();
-        setOcrResults(results);
+          const results = await fetchOcrResults();
+          setOcrResults(results);
 
-        const status = await fetchSystemStatus();
-        setSystemStatus(status);
+          const status = await fetchSystemStatus();
+          setSystemStatus(status);
+        }
       } catch (error) {
         console.error("초기 데이터 로드 오류:", error);
       }
     };
     loadInitialData();
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    let VIDEO_WS: WebSocket | null = null;
-    let META_WS: WebSocket | null = null;
-    let videoPingInterval: NodeJS.Timeout | null = null;
-    let metaPingInterval: NodeJS.Timeout | null = null;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 5;
-    const reconnectDelay = 3000;
-
-    const connectWebSockets = async () => {
-      try {
-        // 비디오 WebSocket 연결
-        if (VIDEO_WS?.readyState === WebSocket.CONNECTING) {
-          console.log("비디오 WebSocket이 이미 연결 중입니다.");
-          return;
-        }
-
-        VIDEO_WS = new WebSocket(WS_VIDEO_URL);
-        VIDEO_WS.binaryType = "arraybuffer";
-
-        // 연결 완료 대기
-        await new Promise<void>((resolve, reject) => {
-          if (!VIDEO_WS) return;
-
-          const timeout = setTimeout(() => {
-            reject(new Error("비디오 WebSocket 연결 시간 초과"));
-          }, 5000);
-
-          VIDEO_WS.onopen = () => {
-            clearTimeout(timeout);
-            console.log("Video WebSocket 연결됨");
-            reconnectAttempts = 0;
-            videoPingInterval = setInterval(() => {
-              if (VIDEO_WS?.readyState === WebSocket.OPEN) {
-                VIDEO_WS.send("ping");
-              }
-            }, 5000);
-            resolve();
-          };
-
-          VIDEO_WS.onerror = (error) => {
-            clearTimeout(timeout);
-            console.error("Video WebSocket 오류:", error);
-            toast({
-              title: "비디오 스트림 오류",
-              description: "비디오 스트림 연결 중 오류가 발생했습니다.",
-              variant: "destructive",
-            });
-            reject(error);
-          };
-        });
-
-        VIDEO_WS.onmessage = (e) => {
-          if (e.data instanceof Blob) {
-            setFrame(new Blob([e.data], { type: "image/jpeg" }));
-          }
-        };
-
-        VIDEO_WS.onclose = () => {
-          if (videoPingInterval) {
-            clearInterval(videoPingInterval);
-            videoPingInterval = null;
-          }
-          if (reconnectAttempts < maxReconnectAttempts) {
-            setTimeout(connectWebSockets, reconnectDelay);
-            reconnectAttempts++;
-          }
-        };
-
-        // 메타 WebSocket 연결
-        if (META_WS?.readyState === WebSocket.CONNECTING) {
-          console.log("메타 WebSocket이 이미 연결 중입니다.");
-          return;
-        }
-
-        META_WS = new WebSocket(WS_META_URL);
-
-        // 연결 완료 대기
-        await new Promise<void>((resolve, reject) => {
-          if (!META_WS) return;
-
-          const timeout = setTimeout(() => {
-            reject(new Error("메타 WebSocket 연결 시간 초과"));
-          }, 5000);
-
-          META_WS.onopen = () => {
-            clearTimeout(timeout);
-            console.log("Meta WebSocket 연결됨");
-            metaPingInterval = setInterval(() => {
-              if (META_WS?.readyState === WebSocket.OPEN) {
-                META_WS.send("ping");
-              }
-            }, 5000);
-            resolve();
-          };
-
-          META_WS.onerror = (error) => {
-            clearTimeout(timeout);
-            console.error("Meta WebSocket 오류:", error);
-            toast({
-              title: "메타데이터 스트림 오류",
-              description: "메타데이터 스트림 연결 중 오류가 발생했습니다.",
-              variant: "destructive",
-            });
-            reject(error);
-          };
-        });
-
-        META_WS.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.detections) {
-              setDetections(data.detections);
-            }
-          } catch (error) {
-            console.error("메타 데이터 파싱 오류:", error);
-          }
-        };
-
-        META_WS.onclose = () => {
-          if (metaPingInterval) {
-            clearInterval(metaPingInterval);
-            metaPingInterval = null;
-          }
-          if (reconnectAttempts < maxReconnectAttempts) {
-            setTimeout(connectWebSockets, reconnectDelay);
-            reconnectAttempts++;
-          }
-        };
-      } catch (error) {
-        console.error("WebSocket 연결 오류:", error);
-        if (reconnectAttempts < maxReconnectAttempts) {
-          setTimeout(connectWebSockets, reconnectDelay);
-          reconnectAttempts++;
-        }
-      }
-    };
-
-    connectWebSockets();
-
-    // Cleanup 함수
-    return () => {
-      if (videoPingInterval) {
-        clearInterval(videoPingInterval);
-        videoPingInterval = null;
-      }
-      if (metaPingInterval) {
-        clearInterval(metaPingInterval);
-        metaPingInterval = null;
-      }
-      if (VIDEO_WS) {
-        VIDEO_WS.close();
-        VIDEO_WS = null;
-      }
-      if (META_WS) {
-        META_WS.close();
-        META_WS = null;
-      }
-    };
-  }, []);
+  }, [isVideoConnected]);
 
   // 모든 API 함수를 반환
   return {
     // 상태
-    isConnected,
+    isVideoConnected,
+    isMetaConnected,
     detectionStats,
     ocrResults,
     systemStatus,
     frame,
     detections,
 
-    // WebSocket 연결 관리
-    connect: wsConnection.connect,
-    disconnect: wsConnection.disconnect,
-
     // API 함수 - toast를 매개변수로 전달
-    controlVideoStream: (isPlaying: boolean) =>
-      controlVideoStream(isPlaying, toast),
     toggleDetection: (enabled: boolean) => toggleDetection(enabled, toast),
     toggleOcr: (enabled: boolean) => toggleOcr(enabled, toast),
     setConfidenceThreshold,
@@ -329,123 +498,7 @@ export function useDetectionApi() {
     fetchOcrResults,
     fetchSystemStatus,
     captureSnapshot: () => captureSnapshot(toast),
-    refreshVideoStream: () => refreshVideoStream(toast),
   };
-}
-
-/**
- * WebSocket 연결을 관리하는 함수
- */
-export function useWebSocketConnection(
-  onConnectionChange?: (isConnected: boolean) => void,
-  onMessage?: (data: any) => void
-): WebSocketConnection {
-  let ws: WebSocket | null = null;
-  let isConnected = false;
-  const { toast } = useToast();
-
-  // WebSocket 연결 함수
-  const connect = async (): Promise<void> => {
-    try {
-      ws = new WebSocket(WS_VIDEO_URL);
-
-      ws.onopen = () => {
-        isConnected = true;
-        onConnectionChange?.(true);
-        toast({
-          title: "서버에 연결되었습니다",
-          description: "실시간 영상 스트림을 수신 중입니다.",
-        });
-      };
-      ws.onclose = () => {
-        isConnected = false;
-        onConnectionChange?.(false);
-      };
-      ws.onerror = (error) => {
-        console.error("WebSocket 오류:", error);
-        isConnected = false;
-        onConnectionChange?.(false);
-        toast({
-          title: "연결 오류",
-          description: "서버 연결 중 오류가 발생했습니다.",
-          variant: "destructive",
-        });
-      };
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          onMessage?.(data);
-        } catch (e) {
-          console.error("메시지 파싱 오류:", e);
-        }
-      };
-    } catch (error) {
-      console.error("WebSocket 연결 실패:", error);
-      toast({
-        title: "연결 실패",
-        description:
-          "서버에 연결할 수 없습니다. 네트워크 상태와 서버 주소를 확인하세요.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // WebSocket 연결 종료 함수
-  const disconnect = (): void => {
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
-  };
-
-  return { isConnected, connect, disconnect, onConnectionChange };
-}
-
-/**
- * 비디오 스트림 제어 함수
- *
- * @param isPlaying 재생 상태
- * @param toast Toast 함수
- * @returns 성공 여부
- */
-export async function controlVideoStream(
-  isPlaying: boolean,
-  toast: ToastFunction
-): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/video/control`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ action: isPlaying ? "pause" : "play" }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    toast({
-      title: isPlaying ? "영상 일시정지" : "영상 재생",
-      description: isPlaying
-        ? "영상 스트림이 일시정지되었습니다."
-        : "영상 스트림이 재생됩니다.",
-    });
-
-    return data.success;
-  } catch (error) {
-    console.error("비디오 스트림 제어 오류:", error);
-
-    toast({
-      title: "제어 오류",
-      description: "비디오 스트림 제어 중 오류가 발생했습니다.",
-      variant: "destructive",
-    });
-
-    return false;
-  }
 }
 
 /**
@@ -460,7 +513,7 @@ export async function toggleDetection(
   toast: ToastFunction
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE_URL}/detection/settings`, {
+    const response = await fetch(`${API_BASE_URL}/api/detection/settings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -507,7 +560,7 @@ export async function toggleOcr(
   toast: ToastFunction
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE_URL}/ocr/settings`, {
+    const response = await fetch(`${API_BASE_URL}/api/ocr/settings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -552,7 +605,7 @@ export async function setConfidenceThreshold(
   threshold: number
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE_URL}/detection/threshold`, {
+    const response = await fetch(`${API_BASE_URL}/api/detection/threshold`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -577,7 +630,7 @@ export async function setConfidenceThreshold(
  */
 export async function fetchDetectionStats(): Promise<DetectionStats> {
   try {
-    const response = await fetch(`${API_BASE_URL}/detection/stats`, {
+    const response = await fetch(`${API_BASE_URL}/api/detection/stats`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -585,7 +638,7 @@ export async function fetchDetectionStats(): Promise<DetectionStats> {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
     return await response.json();
@@ -609,15 +662,18 @@ export async function fetchDetectionStats(): Promise<DetectionStats> {
  */
 export async function fetchOcrResults(limit = 5): Promise<OcrResult[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/ocr/results?limit=${limit}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/api/detection/ocr-results?limit=${limit}`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
     return await response.json();
@@ -634,10 +690,10 @@ export async function fetchOcrResults(limit = 5): Promise<OcrResult[]> {
  */
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   try {
-    const response = await fetch(`${API_BASE_URL}/system/status`);
+    const response = await fetch(`${API_BASE_URL}/api/detection/system-status`);
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
     return await response.json();
@@ -665,22 +721,23 @@ export async function captureSnapshot(
   toast: ToastFunction
 ): Promise<string | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/video/snapshot`, {
+    const response = await fetch(`${VIDEO_SERVER_URL}/snapshot`, {
       method: "POST",
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
-    const data = await response.json();
+    const blob = await response.blob();
+    const imageUrl = URL.createObjectURL(blob);
 
     toast({
       title: "스냅샷 캡처 완료",
       description: "현재 화면이 캡처되었습니다.",
     });
 
-    return data.imageUrl;
+    return imageUrl;
   } catch (error) {
     console.error("스냅샷 캡처 오류:", error);
 
@@ -691,44 +748,5 @@ export async function captureSnapshot(
     });
 
     return null;
-  }
-}
-
-/**
- * 비디오 스트림 새로고침 함수
- *
- * @param toast Toast 함수
- * @returns 성공 여부
- */
-export async function refreshVideoStream(
-  toast: ToastFunction
-): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/video/refresh`, {
-      method: "POST",
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    toast({
-      title: "스트림 새로고침",
-      description: "비디오 스트림이 새로고침되었습니다.",
-    });
-
-    return data.success;
-  } catch (error) {
-    console.error("비디오 스트림 새로고침 오류:", error);
-
-    toast({
-      title: "새로고침 오류",
-      description: "비디오 스트림 새로고침 중 오류가 발생했습니다.",
-      variant: "destructive",
-    });
-
-    return false;
   }
 }

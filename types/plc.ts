@@ -1,38 +1,38 @@
 export interface PLCDevice {
-  id: string
-  name: string
-  type: PLCType
-  connectionType: ConnectionType
-  ipAddress?: string
-  port?: number
-  comPort?: string
-  baudRate?: number
-  timeout: number
-  status: ConnectionStatus
-  lastConnected?: Date
+  id: string;
+  name: string;
+  type: PLCType;
+  connectionType: ConnectionType;
+  ipAddress?: string;
+  port?: number;
+  comPort?: string;
+  baudRate?: number;
+  timeout: number;
+  status: ConnectionStatus;
+  lastConnected?: Date;
 }
 
 export interface DataMapping {
-  id: string
-  name: string
-  plcAddress: string
-  dataType: DataType
-  access: AccessType
-  description: string
-  scaleFactor?: number
-  offset?: number
-  unit?: string
+  id: string;
+  name: string;
+  plcAddress: string;
+  dataType: DataType;
+  access: AccessType;
+  description: string;
+  scaleFactor?: number;
+  offset?: number;
+  unit?: string;
 }
 
 export interface CommunicationLog {
-  id: string
-  timestamp: Date
-  direction: "read" | "write"
-  address: string
-  value: string
-  status: "success" | "error"
-  responseTime?: number
-  errorMessage?: string
+  id: string;
+  timestamp: Date;
+  direction: "read" | "write";
+  address: string;
+  value: string;
+  status: "success" | "error";
+  responseTime?: number;
+  errorMessage?: string;
 }
 
 export enum PLCType {
@@ -86,20 +86,27 @@ export enum ConnectionStatus {
 }
 
 export interface PLCSettings {
-  device: PLCDevice
-  protocol: string // ProtocolType에서 string으로 변경
-  dataMappings: DataMapping[]
-  autoConnect: boolean
-  reconnectInterval: number
-  maxReconnectAttempts: number
+  device: PLCDevice;
+  protocol: ProtocolType;
+  dataMappings: DataMapping[];
+  autoConnect: boolean;
+  reconnectInterval: number;
+  maxReconnectAttempts: number;
+}
+
+export interface ConnectionSettingsProps {
+  device: PLCDevice;
+  onUpdate: (device: PLCDevice) => Promise<void>;
+  onConnect: (deviceId: string) => Promise<void>;
+  onDisconnect: (deviceId: string) => Promise<void>;
 }
 
 export interface PLCStatistics {
-  totalTransactions: number
-  successfulTransactions: number
-  failedTransactions: number
-  averageResponseTime: number
-  uptime: number
-  lastErrorMessage?: string
-  lastErrorTimestamp?: Date
+  totalTransactions: number;
+  successfulTransactions: number;
+  failedTransactions: number;
+  averageResponseTime: number;
+  uptime: number;
+  lastErrorMessage?: string;
+  lastErrorTimestamp?: Date;
 }

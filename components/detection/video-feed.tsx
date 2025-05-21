@@ -4,23 +4,22 @@ import { useEffect, useRef } from "react";
 import { useDetectionApi, Detection } from "@/lib/api/detection-api";
 
 interface VideoFeedProps {
-  isPlaying: boolean;
   showDetections: boolean;
   showOcr: boolean;
   confidenceThreshold: number;
+  isPlaying: boolean; // 속성은 남겨두지만 내부적으로 사용하지 않음
 }
 
 export default function VideoFeed({
-  isPlaying,
   showDetections,
   showOcr,
   confidenceThreshold,
 }: VideoFeedProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { frame, detections } = useDetectionApi();
+  const { frame, detections, isVideoConnected } = useDetectionApi();
 
   useEffect(() => {
-    if (!isPlaying || !frame) return;
+    if (!frame || !isVideoConnected) return;
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
 
@@ -56,12 +55,12 @@ export default function VideoFeed({
       }
     });
   }, [
-    isPlaying,
     frame,
     detections,
     showDetections,
     showOcr,
     confidenceThreshold,
+    isVideoConnected,
   ]);
 
   return (
@@ -69,11 +68,11 @@ export default function VideoFeed({
       <canvas
         ref={canvasRef}
         className="w-full h-full"
-        style={{ display: isPlaying ? "block" : "none" }}
+        style={{ display: isVideoConnected ? "block" : "none" }}
       />
-      {!isPlaying && (
+      {!isVideoConnected && (
         <div className="absolute inset-0 flex items-center justify-center text-white text-lg">
-          영상이 일시정지되었습니다.
+          비디오 스트림 연결이 끊겼습니다.
         </div>
       )}
     </div>

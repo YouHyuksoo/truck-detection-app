@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 
 // 기본 API URL
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010";
 
 // ==================== 타입 정의 ====================
 
@@ -145,7 +145,7 @@ export interface SystemInfo {
  */
 export async function getCameraSettings(toast: any): Promise<CameraSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/camera`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/camera`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -189,7 +189,7 @@ export async function updateCameraSettings(
   toast: any
 ): Promise<CameraSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/camera`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/camera`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -231,7 +231,7 @@ export async function testCameraConnection(
   toast: any
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/camera/test`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/camera/test`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -260,13 +260,7 @@ export async function testCameraConnection(
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 
@@ -327,7 +321,7 @@ export async function connectCamera(
  */
 export async function getModelSettings(toast: any): Promise<ModelSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/model`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/model`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -335,7 +329,7 @@ export async function getModelSettings(toast: any): Promise<ModelSettings> {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
     return await response.json();
@@ -348,17 +342,17 @@ export async function getModelSettings(toast: any): Promise<ModelSettings> {
       variant: "destructive",
     });
     return {
-      modelVersion: "v8",
-      modelSize: "large",
-      customModelPath: "/models/custom.pt",
-      confidenceThreshold: 0.5,
+      modelVersion: "yolov8",
+      modelSize: "medium",
+      customModelPath: "",
+      confidenceThreshold: 0.25,
       iouThreshold: 0.45,
       maxDetections: 100,
       enableGPU: true,
-      enableBatchProcessing: true,
-      batchSize: 4,
-      enableTensorRT: true,
-      enableQuantization: true,
+      enableBatchProcessing: false,
+      batchSize: 1,
+      enableTensorRT: false,
+      enableQuantization: false,
       quantizationType: "int8",
     };
   }
@@ -375,7 +369,7 @@ export async function updateModelSettings(
   toast: any
 ): Promise<ModelSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/model`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/model`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -389,10 +383,10 @@ export async function updateModelSettings(
 
     toast({
       title: "모델 설정 업데이트 성공",
-      description: "YOLO 모델 설정이 성공적으로 업데이트되었습니다.",
+      description: "모델 설정이 성공적으로 업데이트되었습니다.",
     });
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error("모델 설정 업데이트 중 오류 발생:", error);
     toast({
@@ -417,7 +411,7 @@ export async function loadModel(
   toast: any
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/model/load`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/model/load`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -432,8 +426,8 @@ export async function loadModel(
     }
 
     toast({
-      title: "모델 로드 완료",
-      description: "YOLO 모델이 성공적으로 로드되었습니다.",
+      title: "모델 로드 성공",
+      description: "모델이 성공적으로 로드되었습니다.",
     });
 
     return result;
@@ -446,13 +440,7 @@ export async function loadModel(
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 
@@ -463,7 +451,7 @@ export async function loadModel(
  */
 export async function getOcrSettings(toast: any): Promise<OcrSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/ocr`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/ocr`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -471,7 +459,7 @@ export async function getOcrSettings(toast: any): Promise<OcrSettings> {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
     return await response.json();
@@ -485,9 +473,9 @@ export async function getOcrSettings(toast: any): Promise<OcrSettings> {
     });
     return {
       engine: "tesseract",
-      language: "eng",
-      customModelPath: "/models/ocr",
-      confidenceThreshold: 0.8,
+      language: "kor",
+      customModelPath: "",
+      confidenceThreshold: 0.7,
       enablePreprocessing: true,
       preprocessingSteps: ["grayscale", "threshold"],
       enableAutoRotation: true,
@@ -495,11 +483,11 @@ export async function getOcrSettings(toast: any): Promise<OcrSettings> {
       enableDigitsOnly: true,
       minDigits: 4,
       maxDigits: 8,
-      enableWhitelist: true,
-      whitelist: "0123456789",
+      enableWhitelist: false,
+      whitelist: "",
       enableBlacklist: false,
       blacklist: "",
-      enableGPU: true,
+      enableGPU: false,
     };
   }
 }
@@ -515,7 +503,7 @@ export async function updateOcrSettings(
   toast: any
 ): Promise<OcrSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/ocr`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/ocr`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -529,10 +517,10 @@ export async function updateOcrSettings(
 
     toast({
       title: "OCR 설정 업데이트 성공",
-      description: "OCR 엔진 설정이 성공적으로 업데이트되었습니다.",
+      description: "OCR 설정이 성공적으로 업데이트되었습니다.",
     });
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error("OCR 설정 업데이트 중 오류 발생:", error);
     toast({
@@ -557,7 +545,7 @@ export async function testOcr(
   toast: any
 ): Promise<{ success: boolean; message: string; text?: string }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/ocr/test`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/ocr/test`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -573,9 +561,7 @@ export async function testOcr(
 
     toast({
       title: "OCR 테스트 성공",
-      description: `OCR 엔진이 정상적으로 작동합니다. 인식된 텍스트: ${
-        result.text || "없음"
-      }`,
+      description: "OCR 엔진이 정상적으로 작동합니다.",
     });
 
     return result;
@@ -588,13 +574,7 @@ export async function testOcr(
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 
@@ -607,7 +587,7 @@ export async function getTrackingSettings(
   toast: any
 ): Promise<TrackingSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/tracking`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/tracking`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -615,7 +595,7 @@ export async function getTrackingSettings(
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
     return await response.json();
@@ -631,16 +611,16 @@ export async function getTrackingSettings(
       algorithm: "sort",
       maxDisappeared: 30,
       maxDistance: 50,
-      minConfidence: 0.5,
+      minConfidence: 0.3,
       iouThreshold: 0.3,
       enableKalmanFilter: true,
       enableDirectionDetection: true,
-      directionThreshold: 0.7,
+      directionThreshold: 0.5,
       enableSizeFiltering: true,
-      minWidth: 100,
-      minHeight: 100,
-      maxWidth: 800,
-      maxHeight: 800,
+      minWidth: 50,
+      minHeight: 50,
+      maxWidth: 500,
+      maxHeight: 500,
       trackingMode: "normal",
     };
   }
@@ -657,7 +637,7 @@ export async function updateTrackingSettings(
   toast: any
 ): Promise<TrackingSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/tracking`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/tracking`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -671,12 +651,12 @@ export async function updateTrackingSettings(
 
     toast({
       title: "추적 설정 업데이트 성공",
-      description: "객체 추적 설정이 성공적으로 업데이트되었습니다.",
+      description: "추적 설정이 성공적으로 업데이트되었습니다.",
     });
 
-    return response.json();
+    return await response.json();
   } catch (error) {
-    console.error("객체 추적 설정 업데이트 중 오류 발생:", error);
+    console.error("추적 설정 업데이트 중 오류 발생:", error);
     toast({
       title: "추적 설정 업데이트 실패",
       description: `오류: ${
@@ -699,7 +679,7 @@ export async function testTracking(
   toast: any
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/tracking/test`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/tracking/test`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -715,12 +695,12 @@ export async function testTracking(
 
     toast({
       title: "추적 테스트 성공",
-      description: "객체 추적 알고리즘이 정상적으로 작동합니다.",
+      description: "객체 추적이 정상적으로 작동합니다.",
     });
 
     return result;
   } catch (error) {
-    console.error("객체 추적 테스트 중 오류 발생:", error);
+    console.error("추적 테스트 중 오류 발생:", error);
     toast({
       title: "추적 테스트 실패",
       description: `오류: ${
@@ -728,13 +708,7 @@ export async function testTracking(
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 
@@ -745,7 +719,7 @@ export async function testTracking(
  */
 export async function getSystemSettings(toast: any): Promise<SystemSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/system`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/system`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -753,7 +727,7 @@ export async function getSystemSettings(toast: any): Promise<SystemSettings> {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
 
     return await response.json();
@@ -766,20 +740,20 @@ export async function getSystemSettings(toast: any): Promise<SystemSettings> {
       variant: "destructive",
     });
     return {
-      processingMode: "gpu",
+      processingMode: "normal",
       maxThreads: 4,
       enableMultiprocessing: true,
-      gpuMemoryLimit: 4096,
+      gpuMemoryLimit: 2048,
       maxFps: 30,
       enableFrameSkipping: true,
       frameSkipRate: 2,
       logLevel: "info",
       logRetentionDays: 30,
       enableImageSaving: true,
-      imageSavePath: "/data/images",
+      imageSavePath: "./images",
       imageFormat: "jpg",
-      imageQuality: 95,
-      maxStorageSize: 1000000,
+      imageQuality: 90,
+      maxStorageSize: 10240,
       enableNotifications: true,
       notifyOnError: true,
       notifyOnWarning: true,
@@ -787,8 +761,8 @@ export async function getSystemSettings(toast: any): Promise<SystemSettings> {
       emailNotifications: false,
       emailRecipients: "",
       enableAutoBackup: true,
-      backupInterval: 86400,
-      backupPath: "/data/backups",
+      backupInterval: 24,
+      backupPath: "./backups",
       maxBackupCount: 10,
     };
   }
@@ -805,7 +779,7 @@ export async function updateSystemSettings(
   toast: any
 ): Promise<SystemSettings> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/system`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/system`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -822,7 +796,7 @@ export async function updateSystemSettings(
       description: "시스템 설정이 성공적으로 업데이트되었습니다.",
     });
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error("시스템 설정 업데이트 중 오류 발생:", error);
     toast({
@@ -843,38 +817,19 @@ export async function updateSystemSettings(
  */
 export async function getSystemInfo(toast: any): Promise<SystemInfo> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/system/info`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
+    const response = await fetch(`${API_BASE_URL}/api/settings/system/info`);
     if (!response.ok) {
-      throw new Error(`HTTP 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
-
     return await response.json();
   } catch (error) {
     console.error("시스템 정보 조회 오류:", error);
     toast({
       title: "시스템 정보 로드 실패",
-      description:
-        "서버에서 시스템 정보를 불러올 수 없습니다. 기본값을 사용합니다.",
+      description: "서버에서 시스템 정보를 불러올 수 없습니다.",
       variant: "destructive",
     });
-    return {
-      cpuUsage: 0,
-      memoryUsage: {
-        used: 0,
-        total: 0,
-      },
-      gpuUsage: 0,
-      diskUsage: {
-        used: 0,
-        total: 0,
-      },
-    };
+    throw error;
   }
 }
 
@@ -888,21 +843,20 @@ export async function clearLogs(toast: any): Promise<{
   message: string;
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/system/logs/clear`, {
-      method: "POST",
-    });
-
-    const result = await response.json();
-
+    const response = await fetch(
+      `${API_BASE_URL}/api/settings/system/logs/clear`,
+      {
+        method: "POST",
+      }
+    );
     if (!response.ok) {
-      throw new Error(result.message || `API 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
-
+    const result = await response.json();
     toast({
-      title: "로그 삭제 완료",
-      description: "모든 로그가 성공적으로 삭제되었습니다.",
+      title: "로그 삭제 성공",
+      description: "로그가 성공적으로 삭제되었습니다.",
     });
-
     return result;
   } catch (error) {
     console.error("로그 삭제 중 오류 발생:", error);
@@ -913,13 +867,7 @@ export async function clearLogs(toast: any): Promise<{
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 
@@ -934,21 +882,17 @@ export async function backupSystem(toast: any): Promise<{
   backupPath?: string;
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/system/backup`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/system/backup`, {
       method: "POST",
     });
-
-    const result = await response.json();
-
     if (!response.ok) {
-      throw new Error(result.message || `API 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
-
+    const result = await response.json();
     toast({
-      title: "백업 완료",
-      description: "시스템 백업이 성공적으로 완료되었습니다.",
+      title: "백업 성공",
+      description: "시스템이 성공적으로 백업되었습니다.",
     });
-
     return result;
   } catch (error) {
     console.error("시스템 백업 중 오류 발생:", error);
@@ -959,13 +903,7 @@ export async function backupSystem(toast: any): Promise<{
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 
@@ -979,21 +917,17 @@ export async function saveAllSettings(toast: any): Promise<{
   message: string;
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/save`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/save`, {
       method: "POST",
     });
-
-    const result = await response.json();
-
     if (!response.ok) {
-      throw new Error(result.message || `API 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
-
+    const result = await response.json();
     toast({
-      title: "설정이 저장되었습니다",
+      title: "설정 저장 성공",
       description: "모든 설정이 성공적으로 저장되었습니다.",
     });
-
     return result;
   } catch (error) {
     console.error("설정 저장 중 오류 발생:", error);
@@ -1004,13 +938,7 @@ export async function saveAllSettings(toast: any): Promise<{
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 
@@ -1024,21 +952,17 @@ export async function resetSettings(toast: any): Promise<{
   message: string;
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/settings/reset`, {
+    const response = await fetch(`${API_BASE_URL}/api/settings/reset`, {
       method: "POST",
     });
-
-    const result = await response.json();
-
     if (!response.ok) {
-      throw new Error(result.message || `API 오류: ${response.status}`);
+      throw new Error(`API 오류: ${response.status}`);
     }
-
+    const result = await response.json();
     toast({
-      title: "설정 초기화 완료",
-      description: "모든 설정이 기본값으로 복원되었습니다.",
+      title: "설정 초기화 성공",
+      description: "모든 설정이 기본값으로 초기화되었습니다.",
     });
-
     return result;
   } catch (error) {
     console.error("설정 초기화 중 오류 발생:", error);
@@ -1049,13 +973,7 @@ export async function resetSettings(toast: any): Promise<{
       }`,
       variant: "destructive",
     });
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-    };
+    throw error;
   }
 }
 

@@ -29,7 +29,7 @@ import DetectionStats from "./detection-stats";
 import OcrResultsList from "./ocr-results-list";
 import { useToast } from "@/hooks/use-toast";
 import {
-  useWebSocketConnection,
+  useDetectionApi,
   controlVideoStream,
   toggleDetection,
   toggleOcr,
@@ -57,77 +57,23 @@ const headingStyles = css`
 `;
 
 export default function DetectionDashboard() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  // useDetectionApi 훅을 통해 상태 및 기능 가져오기
+  const {
+    isVideoConnected,
+    isMetaConnected,
+    detectionStats,
+    ocrResults,
+    systemStatus,
+  } = useDetectionApi();
+
   const [detectionEnabled, setDetectionEnabled] = useState(true);
   const [ocrEnabled, setOcrEnabled] = useState(true);
   const [confidenceThreshold, setConfidenceThreshold] = useState(40);
   const [activeTab, setActiveTab] = useState("live");
   const [fullscreen, setFullscreen] = useState(false);
-  const [detectionStats, setDetectionStats] = useState<ApiDetectionStats>({
-    totalDetections: 0,
-    successfulOcr: 0,
-    averageConfidence: 0,
-    processingFps: 0,
-    lastDetection: new Date().toISOString(),
-  });
-  const [ocrResults, setOcrResults] = useState<OcrResult[]>([]);
-  const [systemStatus, setSystemStatus] = useState<SystemStatus>({
-    camera: "normal",
-    yoloModel: "normal",
-    ocrEngine: "normal",
-    plcConnection: "normal",
-    systemLoad: "normal",
-  });
+
   const dashboardRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-
-  // WebSocket 연결 사용
-  const wsConnection = useWebSocketConnection(
-    // 연결 상태 변경 콜백
-    (connected) => {
-      setIsConnected(connected);
-      if (connected) {
-        setIsPlaying(true);
-      }
-    },
-    // 메시지 수신 콜백
-    (data) => {
-      // 메시지 타입에 따라 처리
-      if (data.type === "stats") {
-        setDetectionStats(data.stats);
-      } else if (data.type === "ocrResult") {
-        setOcrResults((prev) => [data.result, ...prev].slice(0, 5));
-      } else if (data.type === "systemStatus") {
-        setSystemStatus(data.status);
-      }
-    }
-  );
-
-  // 컴포넌트 마운트 시 WebSocket 연결 및 초기 데이터 로드
-  useEffect(() => {
-    const initializeData = async () => {
-      // WebSocket 연결
-      await wsConnection.connect();
-
-      // 초기 데이터 로드
-      const stats = await fetchDetectionStats();
-      setDetectionStats(stats);
-
-      const results = await fetchOcrResults();
-      setOcrResults(results);
-
-      const status = await fetchSystemStatus();
-      setSystemStatus(status);
-    };
-
-    initializeData();
-
-    // 컴포넌트 언마운트 시 연결 해제
-    return () => {
-      wsConnection.disconnect();
-    };
-  }, []);
 
   // 전체화면 토글
   const toggleFullscreen = () => {
@@ -143,14 +89,6 @@ export default function DetectionDashboard() {
       document.exitFullscreen();
     }
     setFullscreen(!fullscreen);
-  };
-
-  // 재생/일시정지 토글
-  const togglePlayPause = async () => {
-    const success = await controlVideoStream(isPlaying, toast);
-    if (success) {
-      setIsPlaying(!isPlaying);
-    }
   };
 
   // 객체 감지 토글
@@ -180,11 +118,6 @@ export default function DetectionDashboard() {
     await captureSnapshot(toast);
   };
 
-  // 비디오 스트림 새로고침 처리
-  const handleRefreshStream = async () => {
-    await refreshVideoStream(toast);
-  };
-
   return (
     <div
       ref={dashboardRef}
@@ -198,12 +131,20 @@ export default function DetectionDashboard() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xl font-bold">실시간 영상</CardTitle>
             <div className="flex items-center space-x-2">
-              <Badge
-                variant={isConnected ? "default" : "destructive"}
-                className="ml-2"
-              >
-                {isConnected ? "연결됨" : "연결 끊김"}
-              </Badge>
+              <div className="flex space-x-2">
+                <Badge
+                  variant={isVideoConnected ? "default" : "destructive"}
+                  className="ml-2"
+                >
+                  영상 {isVideoConnected ? "연결됨" : "연결 끊김"}
+                </Badge>
+                <Badge
+                  variant={isMetaConnected ? "default" : "destructive"}
+                  className="ml-2"
+                >
+                  메타데이터 {isMetaConnected ? "연결됨" : "연결 끊김"}
+                </Badge>
+              </div>
               <Button variant="outline" size="icon" onClick={toggleFullscreen}>
                 <Maximize2 className="h-4 w-4" />
               </Button>
@@ -225,45 +166,21 @@ export default function DetectionDashboard() {
               <TabsContent value="live" className="m-0">
                 <div className="relative">
                   <VideoFeed
-                    isPlaying={isPlaying}
+                    isPlaying={true}
                     showDetections={detectionEnabled}
                     showOcr={ocrEnabled}
                     confidenceThreshold={confidenceThreshold / 100}
                   />
-                  <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center">
+                  <div className="absolute bottom-4 right-4">
                     <Button
                       variant="secondary"
                       size="sm"
                       className="bg-background/80 backdrop-blur-sm"
-                      onClick={togglePlayPause}
+                      onClick={handleCaptureSnapshot}
                     >
-                      {isPlaying ? (
-                        <Pause className="h-4 w-4 mr-2" />
-                      ) : (
-                        <Play className="h-4 w-4 mr-2" />
-                      )}
-                      {isPlaying ? "일시정지" : "재생"}
+                      <Camera className="h-4 w-4 mr-2" />
+                      스냅샷
                     </Button>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="bg-background/80 backdrop-blur-sm"
-                        onClick={handleCaptureSnapshot}
-                      >
-                        <Camera className="h-4 w-4 mr-2" />
-                        스냅샷
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="bg-background/80 backdrop-blur-sm"
-                        onClick={handleRefreshStream}
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        새로고침
-                      </Button>
-                    </div>
                   </div>
                 </div>
               </TabsContent>

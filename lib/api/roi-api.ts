@@ -1,8 +1,9 @@
 import type { RoiData } from "@/types/roi";
+import { toast } from "@/components/ui/use-toast";
 
 // 기본 API URL
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010";
 const MOCK_API = process.env.NEXT_PUBLIC_MOCK_API === "true";
 
 // 목업 ROI 데이터
@@ -252,7 +253,7 @@ export async function importRoiConfig(config: string): Promise<boolean> {
       headers: {
         "Content-Type": "application/json",
       },
-      body: config,
+      body: JSON.stringify({ config }),
     });
     if (!response.ok) {
       throw new Error(`API 오류: ${response.status}`);
@@ -282,10 +283,15 @@ export async function getTestImage(): Promise<string> {
       throw new Error(`API 오류: ${response.status}`);
     }
     const data = await response.json();
+    if (!data || !data.imageUrl) {
+      // 이미지 URL이 없는 경우 기본 이미지 반환
+      return "/static/img/test1.jpg";
+    }
     return data.imageUrl;
   } catch (error) {
     console.error("테스트 이미지를 가져오는 중 오류 발생:", error);
-    return "/placeholder.svg?height=480&width=640";
+    // 오류 발생 시 기본 이미지 반환
+    return "/static/img/test1.jpg";
   }
 }
 
@@ -338,5 +344,40 @@ export async function stopRoiTest(): Promise<boolean> {
   } catch (error) {
     console.error("관심영역 테스트를 중지하는 중 오류 발생:", error);
     return false;
+  }
+}
+
+export async function testImage(
+  roiId: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/roi/test-image`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ roiId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      message: "ROI 테스트가 성공적으로 완료되었습니다.",
+    };
+  } catch (error) {
+    console.error("ROI 테스트 실패:", error);
+    toast({
+      title: "오류",
+      description: "ROI 테스트 중 오류가 발생했습니다.",
+      variant: "destructive",
+    });
+    return {
+      success: false,
+      message: "ROI 테스트 중 오류가 발생했습니다.",
+    };
   }
 }

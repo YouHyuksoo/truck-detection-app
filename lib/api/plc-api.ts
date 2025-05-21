@@ -7,8 +7,8 @@ import type {
 } from "@/types/plc";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010/api";
-const PLC_ENDPOINT = `${API_BASE_URL}/plc`;
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010";
+const PLC_ENDPOINT = `${API_BASE_URL}/api/plc`;
 
 // 공통 API 호출 함수
 async function apiRequest<T>(
@@ -126,23 +126,4 @@ export async function getCommunicationLogs(): Promise<CommunicationLog[]> {
 // 통계 데이터 가져오기
 export async function getPLCStatistics(): Promise<PLCStatistics> {
   return apiRequest<PLCStatistics>(`${PLC_ENDPOINT}/statistics`);
-}
-
-// PLC API 훅
-export function usePLCApi() {
-  return {
-    getPLCSettings,
-    updatePLCDevice,
-    connectPLC,
-    disconnectPLC,
-    updateProtocol,
-    getDataMappings,
-    addDataMapping,
-    updateDataMapping,
-    deleteDataMapping,
-    readPLCData,
-    writePLCData,
-    getCommunicationLogs,
-    getPLCStatistics,
-  };
 }

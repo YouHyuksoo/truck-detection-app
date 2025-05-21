@@ -2,129 +2,9 @@
 
 import { useCallback, useState } from "react";
 
-// 데이터셋 타입 정의
-export interface Dataset {
-  id: string;
-  name: string;
-  images: number;
-  annotations: number;
-  status: "ready" | "processing" | "error";
-  lastUpdated: string;
-}
-
-// 하이퍼파라미터 타입 정의
-export interface Hyperparameters {
-  // 기본 설정
-  modelVersion: string;
-  modelSize: string;
-  epochs: number;
-  batchSize: number;
-  imageSize: number;
-
-  // 최적화 설정
-  learningRate: number;
-  weightDecay: number;
-  momentum: number;
-  useCosineScheduler: boolean;
-  warmupEpochs: number;
-
-  // 고급 설정
-  iouThreshold: number;
-  confThreshold: number;
-  useAMP: boolean;
-  useEMA: boolean;
-  freezeBackbone: boolean;
-  freezeBackboneEpochs: number;
-
-  // 파인튜닝 설정
-  useFineTuning: boolean;
-  pretrainedModel: string;
-  freezeLayers: string;
-  fineTuningLearningRate: number;
-  onlyTrainNewLayers: boolean;
-}
-
-// 모델 정보 타입 정의
-export interface ModelInfo {
-  id: string;
-  name: string;
-  version: string;
-  type: string;
-  accuracy: number;
-  size: string;
-  createdAt: string;
-  lastUsed: string;
-  status: "active" | "archived" | "training";
-  tags: string[];
-}
-
-// 트레이닝 메트릭 타입 정의
-export interface TrainingMetrics {
-  epoch: number;
-  loss: number;
-  precision: number;
-  recall: number;
-  mAP: number;
-  learningRate: number;
-  timestamp: string;
-}
-
-// 평가 결과 타입 정의
-export interface EvaluationResults {
-  mAP50: number;
-  mAP50_95: number;
-  precision: number;
-  recall: number;
-  f1Score: number;
-  inferenceTime: number;
-  confusionMatrix: {
-    truePositives: number;
-    falsePositives: number;
-    falseNegatives: number;
-    trueNegatives: number;
-  };
-  classAccuracy: Record<string, number>;
-}
-
-// 테스트 결과 타입 정의
-export interface TestResult {
-  id: number;
-  imageUrl: string;
-  predictions: Array<{
-    label: string;
-    confidence: number;
-    bbox: number[];
-  }>;
-  groundTruth: Array<{
-    label: string;
-    bbox: number[];
-  }>;
-  correct: boolean;
-}
-
-// 배포 설정 타입 정의
-export interface DeploymentSettings {
-  modelFormat: string;
-  targetDevice: string;
-  enableQuantization: boolean;
-  quantizationType: string;
-  optimizeForInference: boolean;
-  deploymentTarget: string;
-  modelVersion: string;
-  modelName: string;
-  includeMetadata: boolean;
-}
-
-// 배포된 모델 타입 정의
-export interface DeployedModel {
-  id: string;
-  name: string;
-  format: string;
-  size: string;
-  target: string;
-  deployedAt: string;
-  status: "active" | "archived";
-}
+// API 기본 URL 설정
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010";
 
 // 모의 데이터 생성 함수
 const generateMockData = () => {
@@ -339,152 +219,305 @@ const generateMockData = () => {
   };
 };
 
+// 모의 데이터 전역 변수 선언
+const {
+  datasets: mockDatasets,
+  hyperparameters: mockHyperparameters,
+  models: mockModels,
+  evaluationResults: mockEvaluationResults,
+  deploymentSettings: mockDeploymentSettings,
+  deployedModels: mockDeployedModels,
+} = generateMockData();
+
+// 데이터셋 타입 정의
+export interface Dataset {
+  id: string;
+  name: string;
+  images: number;
+  annotations: number;
+  status: "ready" | "processing" | "error";
+  lastUpdated: string;
+}
+
+// 하이퍼파라미터 타입 정의
+export interface Hyperparameters {
+  // 기본 설정
+  modelVersion: string;
+  modelSize: string;
+  epochs: number;
+  batchSize: number;
+  imageSize: number;
+
+  // 최적화 설정
+  learningRate: number;
+  weightDecay: number;
+  momentum: number;
+  useCosineScheduler: boolean;
+  warmupEpochs: number;
+
+  // 고급 설정
+  iouThreshold: number;
+  confThreshold: number;
+  useAMP: boolean;
+  useEMA: boolean;
+  freezeBackbone: boolean;
+  freezeBackboneEpochs: number;
+
+  // 파인튜닝 설정
+  useFineTuning: boolean;
+  pretrainedModel: string;
+  freezeLayers: string;
+  fineTuningLearningRate: number;
+  onlyTrainNewLayers: boolean;
+}
+
+// 모델 정보 타입 정의
+export interface ModelInfo {
+  id: string;
+  name: string;
+  version: string;
+  type: string;
+  accuracy: number;
+  size: string;
+  createdAt: string;
+  lastUsed: string;
+  status: "active" | "archived" | "training";
+  tags: string[];
+}
+
+// 트레이닝 메트릭 타입 정의
+export interface TrainingMetrics {
+  epoch: number;
+  loss: number;
+  precision: number;
+  recall: number;
+  mAP: number;
+  learningRate: number;
+  timestamp: string;
+}
+
+// 평가 결과 타입 정의
+export interface EvaluationResults {
+  mAP50: number;
+  mAP50_95: number;
+  precision: number;
+  recall: number;
+  f1Score: number;
+  inferenceTime: number;
+  confusionMatrix: {
+    truePositives: number;
+    falsePositives: number;
+    falseNegatives: number;
+    trueNegatives: number;
+  };
+  classAccuracy: Record<string, number>;
+}
+
+// 테스트 결과 타입 정의
+export interface TestResult {
+  id: number;
+  imageUrl: string;
+  predictions: Array<{
+    label: string;
+    confidence: number;
+    bbox: number[];
+  }>;
+  groundTruth: Array<{
+    label: string;
+    bbox: number[];
+  }>;
+  correct: boolean;
+}
+
+// 배포 설정 타입 정의
+export interface DeploymentSettings {
+  modelFormat: string;
+  targetDevice: string;
+  enableQuantization: boolean;
+  quantizationType: string;
+  optimizeForInference: boolean;
+  deploymentTarget: string;
+  modelVersion: string;
+  modelName: string;
+  includeMetadata: boolean;
+}
+
+// 배포된 모델 타입 정의
+export interface DeployedModel {
+  id: string;
+  name: string;
+  format: string;
+  size: string;
+  target: string;
+  deployedAt: string;
+  status: "active" | "archived";
+}
+
 // API 함수 구현
 const isMockEnabled = process.env.NEXT_PUBLIC_MOCK_API === "true";
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8010/api";
 
 // 데이터셋 API 함수
 export const getDatasets = async (): Promise<Dataset[]> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(generateMockData().datasets);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return mockDatasets;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/datasets`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch datasets");
+    const response = await fetch(`${API_BASE_URL}/api/training/datasets`);
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("데이터셋 목록을 가져오는 중 오류 발생:", error);
+    return mockDatasets;
   }
-  return response.json();
 };
 
 export const uploadDataset = async (formData: FormData): Promise<Dataset> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const newDataset: Dataset = {
-          id: `dataset-${Date.now()}`,
-          name: `새 데이터셋 ${new Date().toLocaleDateString()}`,
-          images: Math.floor(Math.random() * 1000) + 500,
-          annotations: Math.floor(Math.random() * 900) + 400,
-          status: "ready",
-          lastUpdated: new Date().toISOString().split("T")[0],
-        };
-        resolve(newDataset);
-      }, 1500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      const newDataset: Dataset = {
+        id: `dataset-${Date.now()}`,
+        name: formData.get("name") as string,
+        images: 0,
+        annotations: 0,
+        status: "processing",
+        lastUpdated: new Date().toISOString(),
+      };
+      mockDatasets.push(newDataset);
+      return newDataset;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/datasets/upload`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!response.ok) {
-    throw new Error("Failed to upload dataset");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/datasets/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("데이터셋 업로드 중 오류 발생:", error);
+    throw error;
   }
-  return response.json();
 };
 
 export const deleteDataset = async (datasetId: string): Promise<void> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, 500);
-    });
-  }
-
-  const response = await fetch(
-    `${API_BASE_URL}/training/datasets/${datasetId}`,
-    {
-      method: "DELETE",
+  try {
+    if (isMockEnabled) {
+      const index = mockDatasets.findIndex((d) => d.id === datasetId);
+      if (index >= 0) {
+        mockDatasets.splice(index, 1);
+      }
+      return;
     }
-  );
-  if (!response.ok) {
-    throw new Error("Failed to delete dataset");
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/datasets/${datasetId}`,
+      {
+        method: "DELETE",
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+  } catch (error) {
+    console.error("데이터셋 삭제 중 오류 발생:", error);
+    throw error;
   }
 };
 
 // 하이퍼파라미터 API 함수
 export const getHyperparameters = async (): Promise<Hyperparameters> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(generateMockData().hyperparameters);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return mockHyperparameters;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/hyperparameters`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch hyperparameters");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/hyperparameters`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("하이퍼파라미터를 가져오는 중 오류 발생:", error);
+    return mockHyperparameters;
   }
-  return response.json();
 };
 
 export const updateHyperparameters = async (
   hyperparameters: Hyperparameters
 ): Promise<Hyperparameters> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(hyperparameters);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return hyperparameters;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/hyperparameters`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(hyperparameters),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to update hyperparameters");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/hyperparameters`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(hyperparameters),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("하이퍼파라미터 업데이트 중 오류 발생:", error);
+    throw error;
   }
-  return response.json();
 };
 
 // 모델 API 함수
 export const getModels = async (): Promise<ModelInfo[]> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(generateMockData().models);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return mockModels;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/models`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch models");
+    const response = await fetch(`${API_BASE_URL}/api/training/models`);
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("모델 목록을 가져오는 중 오류 발생:", error);
+    return mockModels;
   }
-  return response.json();
 };
 
 export const getModelById = async (modelId: string): Promise<ModelInfo> => {
-  if (isMockEnabled) {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const model = generateMockData().models.find((m) => m.id === modelId);
-        if (model) {
-          resolve(model);
-        } else {
-          reject(new Error("Model not found"));
-        }
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      const model = mockModels.find((m) => m.id === modelId);
+      if (!model) {
+        throw new Error("모델을 찾을 수 없습니다.");
+      }
+      return model;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/models/${modelId}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch model");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/models/${modelId}`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("모델 정보를 가져오는 중 오류 발생:", error);
+    throw error;
   }
-  return response.json();
 };
 
 // 트레이닝 API 함수
@@ -493,251 +526,228 @@ export const startTraining = async (
   modelId: string | null,
   hyperparameters: Hyperparameters
 ): Promise<{ trainingId: string }> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({ trainingId: `training-${Date.now()}` });
-      }, 1000);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return { trainingId: `training-${Date.now()}` };
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/start`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      datasetId,
-      modelId,
-      hyperparameters,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to start training");
+    const response = await fetch(`${API_BASE_URL}/api/training/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ datasetId, modelId, hyperparameters }),
+    });
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("트레이닝 시작 중 오류 발생:", error);
+    throw error;
   }
-  return response.json();
 };
 
 export const stopTraining = async (trainingId: string): Promise<void> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/stop/${trainingId}`, {
-    method: "POST",
-  });
-  if (!response.ok) {
-    throw new Error("Failed to stop training");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/${trainingId}/stop`,
+      {
+        method: "POST",
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+  } catch (error) {
+    console.error("트레이닝 중지 중 오류 발생:", error);
+    throw error;
   }
 };
 
 export const getTrainingMetrics = async (
   trainingId: string
 ): Promise<TrainingMetrics[]> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const metrics: TrainingMetrics[] = [];
-        const numEpochs = Math.floor(Math.random() * 50) + 1;
+  try {
+    if (isMockEnabled) {
+      return [];
+    }
 
-        for (let epoch = 1; epoch <= numEpochs; epoch++) {
-          metrics.push({
-            epoch,
-            loss: 5 / (1 + 0.1 * epoch) + Math.random() * 0.2,
-            precision:
-              0.5 + 0.4 * (1 - Math.exp(-0.05 * epoch)) + Math.random() * 0.05,
-            recall:
-              0.5 + 0.4 * (1 - Math.exp(-0.05 * epoch)) + Math.random() * 0.05,
-            mAP:
-              0.4 + 0.5 * (1 - Math.exp(-0.03 * epoch)) + Math.random() * 0.03,
-            learningRate: 0.01 * Math.cos(((epoch / 100) * Math.PI) / 2),
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        resolve(metrics);
-      }, 500);
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/${trainingId}/metrics`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("트레이닝 메트릭을 가져오는 중 오류 발생:", error);
+    return [];
   }
-
-  const response = await fetch(
-    `${API_BASE_URL}/training/metrics/${trainingId}`
-  );
-  if (!response.ok) {
-    throw new Error("Failed to fetch training metrics");
-  }
-  return response.json();
 };
 
 export const getTrainingLogs = async (
   trainingId: string
 ): Promise<string[]> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const logs: string[] = [];
-        const numEpochs = Math.floor(Math.random() * 50) + 1;
+  try {
+    if (isMockEnabled) {
+      return [];
+    }
 
-        for (let epoch = 1; epoch <= numEpochs; epoch++) {
-          const loss = 5 / (1 + 0.1 * epoch) + Math.random() * 0.2;
-          const precision =
-            0.5 + 0.4 * (1 - Math.exp(-0.05 * epoch)) + Math.random() * 0.05;
-          const recall =
-            0.5 + 0.4 * (1 - Math.exp(-0.05 * epoch)) + Math.random() * 0.05;
-          const mAP =
-            0.4 + 0.5 * (1 - Math.exp(-0.03 * epoch)) + Math.random() * 0.03;
-          const learningRate = 0.01 * Math.cos(((epoch / 100) * Math.PI) / 2);
-
-          logs.push(`[${epoch}] Epoch ${epoch}/100, Loss: ${loss.toFixed(4)}`);
-          logs.push(
-            `[${epoch}] Precision: ${precision.toFixed(
-              4
-            )}, Recall: ${recall.toFixed(4)}`
-          );
-          logs.push(
-            `[${epoch}] mAP@0.5: ${mAP.toFixed(4)}, LR: ${learningRate.toFixed(
-              6
-            )}`
-          );
-        }
-
-        resolve(logs);
-      }, 500);
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/${trainingId}/logs`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("트레이닝 로그를 가져오는 중 오류 발생:", error);
+    return [];
   }
-
-  const response = await fetch(`${API_BASE_URL}/training/logs/${trainingId}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch training logs");
-  }
-  return response.json();
 };
 
 // 평가 API 함수
 export const evaluateModel = async (
   modelId: string
 ): Promise<EvaluationResults> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(generateMockData().evaluationResults);
-      }, 2000);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return mockEvaluationResults;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/evaluate/${modelId}`, {
-    method: "POST",
-  });
-  if (!response.ok) {
-    throw new Error("Failed to evaluate model");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/models/${modelId}/evaluate`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("모델 평가 중 오류 발생:", error);
+    return mockEvaluationResults;
   }
-  return response.json();
 };
 
 export const getTestResults = async (
   modelId: string
 ): Promise<TestResult[]> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(generateMockData().testResults);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return [];
+    }
 
-  const response = await fetch(
-    `${API_BASE_URL}/training/test-results/${modelId}`
-  );
-  if (!response.ok) {
-    throw new Error("Failed to fetch test results");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/models/${modelId}/test-results`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("테스트 결과를 가져오는 중 오류 발생:", error);
+    return [];
   }
-  return response.json();
 };
 
 // 배포 API 함수
 export const getDeploymentSettings = async (): Promise<DeploymentSettings> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(generateMockData().deploymentSettings);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return mockDeploymentSettings;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/deployment/settings`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch deployment settings");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/deployment/settings`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("배포 설정을 가져오는 중 오류 발생:", error);
+    return mockDeploymentSettings;
   }
-  return response.json();
 };
 
 export const updateDeploymentSettings = async (
   settings: DeploymentSettings
 ): Promise<DeploymentSettings> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(settings);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return settings;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/deployment/settings`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(settings),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to update deployment settings");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/deployment/settings`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(settings),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("배포 설정 업데이트 중 오류 발생:", error);
+    throw error;
   }
-  return response.json();
 };
 
 export const deployModel = async (
   modelId: string,
   settings: DeploymentSettings
 ): Promise<{ deploymentId: string }> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({ deploymentId: `deployment-${Date.now()}` });
-      }, 2000);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return { deploymentId: `deployment-${Date.now()}` };
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/deploy/${modelId}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(settings),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to deploy model");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/models/${modelId}/deploy`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(settings),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("모델 배포 중 오류 발생:", error);
+    throw error;
   }
-  return response.json();
 };
 
 export const getDeployedModels = async (): Promise<DeployedModel[]> => {
-  if (isMockEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(generateMockData().deployedModels);
-      }, 500);
-    });
-  }
+  try {
+    if (isMockEnabled) {
+      return mockDeployedModels;
+    }
 
-  const response = await fetch(`${API_BASE_URL}/training/deployed-models`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch deployed models");
+    const response = await fetch(
+      `${API_BASE_URL}/api/training/deployment/models`
+    );
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("배포된 모델 목록을 가져오는 중 오류 발생:", error);
+    return mockDeployedModels;
   }
-  return response.json();
 };
 
 // 훅 구현

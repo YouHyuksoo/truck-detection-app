@@ -34,6 +34,14 @@ for i in range(1, 6):
     open(f"{STATIC_IMG_PATH}/sample{i}.jpg", "wb").close()
 open(f"{STATIC_IMG_PATH}/snapshot.jpg", "wb").close()
 
+# 테스트 이미지 파일 생성
+TEST_IMAGE_PATH = f"{STATIC_IMG_PATH}/test1.jpg"
+if not os.path.exists(TEST_IMAGE_PATH):
+    # 테스트용 이미지 생성
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    cv2.putText(frame, "Test Image", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    cv2.imwrite(TEST_IMAGE_PATH, frame)
+
 # 정적 파일 경로 마운트
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -214,18 +222,51 @@ class DeployedModel(BaseModel):
     deployedAt: str
     status: str
 
+# ROI 관련 Pydantic 모델
+class RoiPoint(BaseModel):
+    x: float
+    y: float
+
+class RoiActions(BaseModel):
+    detectTrucks: bool
+    performOcr: bool
+    sendToPLC: bool
+    triggerAlarm: bool
+
+class RoiData(BaseModel):
+    id: str
+    name: str
+    type: str
+    points: List[RoiPoint]
+    color: str
+    enabled: bool
+    actions: RoiActions
+    minDetectionTime: int
+    description: str
+
 @app.get("/api/detection/stats")
-def get_detection_stats():
+def get_detection_stats(from_date: str = None, to_date: str = None):
+    if from_date is None:
+        from_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    if to_date is None:
+        to_date = datetime.now().strftime("%Y-%m-%d")
     return {
-        "totalDetections": 100,
-        "successfulOcr": 75,
-        "averageConfidence": 88.4,
+        "detectionByTime": [
+            {"date": "00-04", "count": 1250, "success": 1180},
+            {"date": "04-08", "count": 2100, "success": 1950},
+            {"date": "08-12", "count": 5200, "success": 4900},
+            {"date": "12-16", "count": 4800, "success": 4500},
+            {"date": "16-20", "count": 6300, "success": 5900},
+            {"date": "20-24", "count": 3200, "success": 3000}
+        ],
+        "totalDetections": 24850,
+        "successfulOcr": 23430,
+        "averageConfidence": 94.3,
         "processingFps": 23.5,
         "lastDetection": datetime.utcnow().isoformat(),
     }
 
-
-@app.get("/api/ocr/results")
+@app.get("/api/detection/ocr-results")
 def get_ocr_results(limit: int = 5):
     return [
         {
@@ -238,8 +279,7 @@ def get_ocr_results(limit: int = 5):
         for i in range(1, limit + 1)
     ]
 
-
-@app.get("/api/system/status")
+@app.get("/api/detection/system-status")
 def get_system_status():
     return {
         "camera": "normal",
@@ -250,6 +290,13 @@ def get_system_status():
         "systemLoadPercentage": 35,
     }
 
+@app.post("/api/detection/snapshot")
+def capture_snapshot():
+    return {"success": True, "imageUrl": "/static/img/snapshot.jpg"}
+
+@app.post("/api/detection/stream/refresh")
+async def refresh_detection_stream():
+    return {"success": True}
 
 @app.post("/api/video/control")
 async def control_video_stream(request: Request):
@@ -275,48 +322,17 @@ async def control_video_stream(request: Request):
             "message": f"비디오 스트림 제어 실패: {str(e)}"
         }
 
-
 @app.post("/api/detection/settings")
-async def toggle_detection(request: Request):
-    data = await request.json()
-    return {"success": True, "message": "감지 설정 변경 성공"}
-
+async def update_detection_settings(enabled: bool):
+    return {"success": True, "enabled": enabled}
 
 @app.post("/api/ocr/settings")
-async def toggle_ocr(request: Request):
-    data = await request.json()
-    return {"success": True, "message": "OCR 설정 변경 성공"}
-
-
-@app.post("/api/video/snapshot")
-def capture_snapshot():
-    return {"success": True, "imageUrl": "/static/img/snapshot.jpg"}
-
-
-@app.post("/api/video/refresh")
-async def refresh_video_stream():
-    try:
-        # video_server에 새로고침 명령 전달
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{VIDEO_SERVER_URL}/refresh")
-            if response.status_code != 200:
-                return {"success": False, "message": "비디오 서버 통신 실패"}
-            
-            result = response.json()
-            return result
-            
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"비디오 스트림 새로고침 실패: {str(e)}"
-        }
-
+async def update_ocr_settings(enabled: bool):
+    return {"success": True, "enabled": enabled}
 
 @app.post("/api/detection/threshold")
-async def set_confidence_threshold(request: Request):
-    data = await request.json()
-    return {"success": True, "message": "신뢰도 임계값 설정 성공"}
-
+async def update_detection_threshold(threshold: float):
+    return {"success": True, "threshold": threshold}
 
 # PLC 설정 가져오기
 @app.get("/api/plc/settings")
@@ -364,13 +380,11 @@ def get_plc_settings():
         "maxReconnectAttempts": 5,
     }
 
-
 # PLC 장치 정보 업데이트
 @app.put("/api/plc/device")
 async def update_plc_device(request: Request):
     data = await request.json()
     return data
-
 
 # PLC 연결 시도
 @app.post("/api/plc/connect/{device_id}")
@@ -381,19 +395,16 @@ def connect_plc(device_id: str):
         "lastConnected": __import__("datetime").datetime.utcnow().isoformat(),
     }
 
-
 # PLC 연결 해제
 @app.post("/api/plc/disconnect/{device_id}")
 def disconnect_plc(device_id: str):
     return {"id": device_id, "status": "disconnected"}
-
 
 # 프로토콜 설정 업데이트
 @app.put("/api/plc/protocol")
 async def update_plc_protocol(request: Request):
     data = await request.json()
     return {"protocol": data.get("protocol")}
-
 
 # 데이터 매핑 목록 가져오기
 @app.get("/api/plc/mappings")
@@ -425,13 +436,11 @@ def get_data_mappings():
         },
     ]
 
-
 # 데이터 매핑 추가
 @app.post("/api/plc/mappings")
 async def add_data_mapping(request: Request):
     data = await request.json()
     return data
-
 
 # 데이터 매핑 업데이트
 @app.put("/api/plc/mappings/{mapping_id}")
@@ -440,12 +449,10 @@ async def update_data_mapping(mapping_id: str, request: Request):
     data["id"] = mapping_id
     return data
 
-
 # 데이터 매핑 삭제
 @app.delete("/api/plc/mappings/{mapping_id}")
 def delete_data_mapping(mapping_id: str):
     return {}
-
 
 # PLC 데이터 읽기
 @app.post("/api/plc/read")
@@ -453,12 +460,10 @@ async def read_plc_data(request: Request):
     data = await request.json()
     return {"value": "0"}
 
-
 # PLC 데이터 쓰기
 @app.post("/api/plc/write")
 async def write_plc_data(request: Request):
     return {}
-
 
 # 통신 로그 가져오기
 @app.get("/api/plc/logs")
@@ -479,7 +484,6 @@ def get_communication_logs():
         )
     return logs
 
-
 # 통계 데이터 가져오기
 @app.get("/api/plc/statistics")
 def get_plc_statistics():
@@ -492,7 +496,6 @@ def get_plc_statistics():
         "lastErrorMessage": "Connection timeout",
         "lastErrorTimestamp": __import__("datetime").datetime.utcnow().isoformat(),
     }
-
 
 # OCR 로그 목록 (POST)
 @app.post("/api/logs/ocr")
@@ -514,7 +517,6 @@ async def post_logs_ocr(request: Request):
         }
         for i in range(1, 6)
     ]
-
 
 # OCR 로그 통계 (POST)
 @app.post("/api/logs/stats")
@@ -548,14 +550,12 @@ async def post_logs_stats(request: Request):
         },
     }
 
-
 # OCR 로그 내보내기 (POST)
 @app.post("/api/logs/export")
 async def post_logs_export(request: Request):
     data = await request.json()
     fmt = data.get("format", "csv")
     return {"downloadUrl": f"/static/exports/logs.{fmt}"}
-
 
 # WebSocket: 새 OCR 로그 구독
 @app.websocket("/api/logs/subscribe")
@@ -577,7 +577,6 @@ async def ws_logs_subscribe(websocket: WebSocket):
         await websocket.send_json({"type": "newLog", "log": log})
         await asyncio.sleep(5)
 
-
 # Camera Settings
 @app.get("/api/settings/camera")
 def get_camera_settings():
@@ -592,21 +591,17 @@ def get_camera_settings():
         "bufferSize": 10
     }
 
-
 @app.put("/api/settings/camera")
 async def update_camera_settings(settings: CameraSettings):
     return settings
-
 
 @app.post("/api/settings/camera/test")
 async def test_camera_connection(settings: CameraSettings):
     return {"success": True, "message": "카메라 연결 테스트 성공"}
 
-
 @app.post("/api/settings/camera/connect")
 async def connect_camera(settings: CameraSettings):
     return {"success": True, "message": "카메라 연결 성공"}
-
 
 # Model Settings
 @app.get("/api/settings/model")
@@ -626,16 +621,13 @@ def get_model_settings():
         "quantizationType": "int8"
     }
 
-
 @app.put("/api/settings/model")
 async def update_model_settings(settings: ModelSettings):
     return settings
 
-
 @app.post("/api/settings/model/load")
 async def load_model(settings: ModelSettings):
     return {"success": True, "message": "모델 로드 성공"}
-
 
 # OCR Settings
 @app.get("/api/settings/ocr")
@@ -659,16 +651,13 @@ def get_ocr_settings():
         "enableGPU": True
     }
 
-
 @app.put("/api/settings/ocr")
 async def update_ocr_settings(settings: OcrSettings):
     return settings
 
-
 @app.post("/api/settings/ocr/test")
 async def test_ocr(settings: OcrSettings):
     return {"success": True, "message": "OCR 테스트 성공", "text": "123456"}
-
 
 # Tracking Settings
 @app.get("/api/settings/tracking")
@@ -690,16 +679,13 @@ def get_tracking_settings():
         "trackingMode": "normal"
     }
 
-
 @app.put("/api/settings/tracking")
 async def update_tracking_settings(settings: TrackingSettings):
     return settings
 
-
 @app.post("/api/settings/tracking/test")
 async def test_tracking(settings: TrackingSettings):
     return {"success": True, "message": "추적 테스트 성공"}
-
 
 # System Settings
 @app.get("/api/settings/system")
@@ -731,11 +717,9 @@ def get_system_settings():
         "maxBackupCount": 10
     }
 
-
 @app.put("/api/settings/system")
 async def update_system_settings(settings: SystemSettings):
     return settings
-
 
 @app.get("/api/settings/system/info")
 def get_system_info():
@@ -754,27 +738,22 @@ def get_system_info():
         "backupSize": 1024
     }
 
-
 @app.post("/api/settings/system/logs/clear")
 def clear_logs():
     return {"success": True, "message": "로그 삭제 성공"}
 
-
 @app.post("/api/settings/system/backup")
 def backup_system():
     return {"success": True, "message": "시스템 백업 성공", "backupPath": "/data/backups/backup_20240320.zip"}
-
 
 # Save and Reset
 @app.post("/api/settings/save")
 def save_all_settings():
     return {"success": True, "message": "모든 설정 저장 성공"}
 
-
 @app.post("/api/settings/reset")
 def reset_settings():
     return {"success": True, "message": "설정 초기화 성공"}
-
 
 # 트레이닝 관련 엔드포인트
 @app.get("/api/training/datasets")
@@ -790,10 +769,10 @@ def get_datasets():
         }
     ]
 
-@app.post("/api/training/datasets")
+@app.post("/api/training/datasets/upload")
 async def upload_dataset(file: UploadFile = File(...)):
     return {
-        "id": "dataset-2",
+        "id": f"dataset-{datetime.utcnow().timestamp()}",
         "name": file.filename,
         "images": 0,
         "annotations": 0,
@@ -941,7 +920,7 @@ def get_test_results(model_id: str):
         }
     ]
 
-@app.get("/api/training/deployment-settings")
+@app.get("/api/training/deployment/settings")
 def get_deployment_settings():
     return {
         "modelFormat": "onnx",
@@ -955,7 +934,7 @@ def get_deployment_settings():
         "includeMetadata": True
     }
 
-@app.put("/api/training/deployment-settings")
+@app.put("/api/training/deployment/settings")
 async def update_deployment_settings(settings: DeploymentSettings):
     return settings
 
@@ -1088,6 +1067,194 @@ async def websocket_meta_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"메타 WebSocket 오류: {str(e)}")
         manager.disconnect(websocket, "meta")
+
+# ROI 관련 엔드포인트
+@app.get("/api/roi")
+def get_all_rois():
+    return [
+        {
+            "id": "roi-1",
+            "name": "입구 영역",
+            "type": "polygon",
+            "points": [
+                {"x": 100, "y": 100},
+                {"x": 300, "y": 100},
+                {"x": 300, "y": 200},
+                {"x": 100, "y": 200}
+            ],
+            "color": "#ff0000",
+            "enabled": True,
+            "actions": {
+                "detectTrucks": True,
+                "performOcr": True,
+                "sendToPLC": True,
+                "triggerAlarm": False
+            },
+            "minDetectionTime": 2,
+            "description": "트럭이 입장하는 영역"
+        },
+        {
+            "id": "roi-2",
+            "name": "출구 영역",
+            "type": "rectangle",
+            "points": [
+                {"x": 400, "y": 300},
+                {"x": 600, "y": 400}
+            ],
+            "color": "#00ff00",
+            "enabled": True,
+            "actions": {
+                "detectTrucks": True,
+                "performOcr": False,
+                "sendToPLC": True,
+                "triggerAlarm": False
+            },
+            "minDetectionTime": 1,
+            "description": "트럭이 퇴장하는 영역"
+        }
+    ]
+
+@app.get("/api/roi/{roi_id}")
+def get_roi(roi_id: str):
+    rois = get_all_rois()
+    for roi in rois:
+        if roi["id"] == roi_id:
+            return roi
+    return None
+
+@app.post("/api/roi")
+async def create_roi(roi: RoiData):
+    return roi
+
+@app.put("/api/roi/{roi_id}")
+async def update_roi(roi_id: str, roi: RoiData):
+    return roi
+
+@app.delete("/api/roi/{roi_id}")
+def delete_roi(roi_id: str):
+    return {"success": True, "message": "ROI 삭제 성공"}
+
+@app.get("/api/roi/export")
+def export_roi_config():
+    rois = get_all_rois()
+    return rois
+
+@app.post("/api/roi/import")
+async def import_roi_config(rois: List[RoiData]):
+    return {"success": True, "message": "ROI 설정 가져오기 성공"}
+
+@app.get("/api/roi/test-image")
+def get_test_image():
+    return {
+        "success": True,
+        "imageUrl": "/static/img/test1.jpg"
+    }
+
+@app.post("/api/roi/test/start")
+def start_roi_test():
+    return {"success": True, "message": "ROI 테스트 시작"}
+
+@app.post("/api/roi/test/stop")
+def stop_roi_test():
+    return {"success": True, "message": "ROI 테스트 중지"}
+
+# 통계 관련 엔드포인트 추가
+@app.get("/api/stats/detection")
+def get_detection_statistics(from_date: str, to_date: str):
+    return {
+        "detectionByType": [
+            {"name": "트럭", "value": 12500},
+            {"name": "컨테이너", "value": 8200},
+            {"name": "기타 차량", "value": 4192}
+        ],
+        "detectionByTime": [
+            {"date": "00-04", "count": 1250, "success": 1180},
+            {"date": "04-08", "count": 2100, "success": 1950},
+            {"date": "08-12", "count": 5200, "success": 4900},
+            {"date": "12-16", "count": 4800, "success": 4500},
+            {"date": "16-20", "count": 6300, "success": 5900},
+            {"date": "20-24", "count": 3200, "success": 3000}
+        ],
+        "detectionByArea": [
+            {"area": "입구", "count": 8500, "success": 8100},
+            {"area": "출구", "count": 7200, "success": 6800},
+            {"area": "주차장", "count": 5100, "success": 4700},
+            {"area": "하차장", "count": 4092, "success": 3800}
+        ],
+        "averageAccuracy": 92.8,
+        "averageProcessingSpeed": 185,
+        "falseDetectionRate": 3.2
+    }
+
+@app.get("/api/stats/ocr")
+def get_ocr_statistics(from_date: str, to_date: str):
+    return {
+        "accuracyTrend": [
+            {"date": "5/1", "accuracy": 85.2},
+            {"date": "5/5", "accuracy": 86.1},
+            {"date": "5/10", "accuracy": 87.5},
+            {"date": "5/15", "accuracy": 88.2},
+            {"date": "5/20", "accuracy": 89.0},
+            {"date": "5/25", "accuracy": 89.5},
+            {"date": "5/30", "accuracy": 89.7}
+        ],
+        "confidenceLevels": [
+            {"name": "90-100%", "value": 12500},
+            {"name": "80-90%", "value": 6800},
+            {"name": "70-80%", "value": 3200},
+            {"name": "60-70%", "value": 1500},
+            {"name": "<60%", "value": 892}
+        ],
+        "errorTypes": [
+            {"type": "숫자 오인식", "count": 450},
+            {"type": "부분 누락", "count": 320},
+            {"type": "번호판 미감지", "count": 280},
+            {"type": "저해상도", "count": 210},
+            {"type": "기타", "count": 140}
+        ],
+        "averageAccuracy": 89.7,
+        "averageProcessingTime": 75,
+        "errorRate": 10.3
+    }
+
+@app.get("/api/stats/processing-time")
+def get_processing_time_statistics(from_date: str, to_date: str):
+    return {
+        "processingSteps": [
+            {"name": "영상 획득", "time": 15},
+            {"name": "전처리", "time": 25},
+            {"name": "객체 감지", "time": 120},
+            {"name": "객체 추적", "time": 35},
+            {"name": "OCR 처리", "time": 75},
+            {"name": "후처리", "time": 20}
+        ],
+        "timeTrend": [
+            {"date": "5/1", "total": 310, "detection": 135, "ocr": 85},
+            {"date": "5/5", "total": 300, "detection": 130, "ocr": 82},
+            {"date": "5/10", "total": 285, "detection": 125, "ocr": 80},
+            {"date": "5/15", "total": 275, "detection": 122, "ocr": 78},
+            {"date": "5/20", "total": 265, "detection": 120, "ocr": 76},
+            {"date": "5/25", "total": 255, "detection": 118, "ocr": 75},
+            {"date": "5/30", "total": 245, "detection": 115, "ocr": 75}
+        ],
+        "loadDistribution": [
+            {"date": "00:00", "load": 15},
+            {"date": "02:00", "load": 10},
+            {"date": "04:00", "load": 8},
+            {"date": "06:00", "load": 20},
+            {"date": "08:00", "load": 45},
+            {"date": "10:00", "load": 65},
+            {"date": "12:00", "load": 70},
+            {"date": "14:00", "load": 75},
+            {"date": "16:00", "load": 80},
+            {"date": "18:00", "load": 70},
+            {"date": "20:00", "load": 55},
+            {"date": "22:00", "load": 30}
+        ],
+        "averageTotalTime": 245,
+        "maxProcessingTime": 520,
+        "processingsPerSecond": 4.1
+    }
 
 # 👇 바로 실행 가능하도록 구성
 def main():
