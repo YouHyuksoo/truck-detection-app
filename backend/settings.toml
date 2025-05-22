@@ -1,0 +1,243 @@
+confidence_threshold = 0.27
+last_updated = "2025-05-21T15:51:55.849004"
+
+[camera]
+rtsp_url = "rtsp://example.com/stream"
+ip_camera_url = "http://example.com/stream"
+usb_camera_index = "0"
+resolution = "640x480"
+fps = 19
+enable_auto_reconnect = true
+reconnect_interval = 5000
+buffer_size = 10
+
+[model]
+model_version = "yolov8"
+model_size = "medium"
+custom_model_path = ""
+confidence_threshold = 25.0
+iou_threshold = 45.0
+max_detections = 100
+enable_gpu = true
+enable_batch_processing = false
+batch_size = 1
+enable_tensor_rt = false
+enable_quantization = false
+quantization_type = "int8"
+
+[ocr]
+engine = "easyocr"
+language = "digits"
+custom_model_path = ""
+confidence_threshold = 70.0
+enable_preprocessing = true
+preprocessing_steps = [ "grayscale", "threshold",]
+enable_auto_rotation = true
+max_rotation_angle = 45
+enable_digits_only = true
+min_digits = 4
+max_digits = 8
+enable_whitelist = false
+whitelist = ""
+enable_blacklist = false
+blacklist = ""
+enable_gpu = false
+
+[tracking]
+algorithm = "sort"
+max_disappeared = 30
+max_distance = 50
+min_confidence = 30
+iou_threshold = 40
+enable_kalman_filter = true
+enable_direction_detection = true
+direction_threshold = 50
+enable_size_filtering = true
+min_width = 50
+min_height = 30
+max_width = 500
+max_height = 300
+tracking_mode = "all"
+
+[system]
+processing_mode = "balanced"
+max_threads = 4
+enable_multiprocessing = true
+gpu_memory_limit = 2048
+max_fps = 30
+enable_frame_skipping = true
+frame_skip_rate = 2
+log_level = "info"
+log_retention_days = 30
+enable_image_saving = true
+image_save_path = "./images"
+image_format = "jpg"
+image_quality = 90
+max_storage_size = 10240
+enable_notifications = true
+notify_on_error = true
+notify_on_warning = true
+notify_on_success = false
+email_notifications = false
+email_recipients = ""
+enable_auto_backup = true
+backup_interval = 24
+backup_path = "./backups"
+max_backup_count = 10
+
+[plc]
+device_id = "plc1"
+device_name = "메인 PLC"
+device_type = "modbus_tcp"
+connection_type = "tcp"
+ip_address = "192.168.1.100"
+port = 502
+timeout = 1000
+status = "disconnected"
+protocol = "modbus_tcp"
+auto_connect = true
+reconnect_interval = 5000
+max_reconnect_attempts = 5
+
+[roi]
+[[roi.areas]]
+id = "roi-1"
+name = "입구 영역"
+type = "polygon"
+color = "#ff0000"
+enabled = true
+min_detection_time = 2
+description = "트럭이 입장하는 영역"
+[[roi.areas.points]]
+x = 100
+y = 100
+
+[[roi.areas.points]]
+x = 300
+y = 100
+
+[[roi.areas.points]]
+x = 300
+y = 200
+
+[[roi.areas.points]]
+x = 100
+y = 200
+
+
+[roi.areas.actions]
+detect_trucks = true
+perform_ocr = true
+send_to_plc = true
+trigger_alarm = false
+[[roi.areas]]
+id = "roi-2"
+name = "출구 영역"
+type = "rectangle"
+color = "#00ff00"
+enabled = true
+min_detection_time = 1
+description = "트럭이 퇴장하는 영역"
+[[roi.areas.points]]
+x = 400
+y = 300
+
+[[roi.areas.points]]
+x = 600
+y = 400
+
+
+[roi.areas.actions]
+detect_trucks = true
+perform_ocr = false
+send_to_plc = true
+trigger_alarm = false
+
+[training]
+[[training.datasets]]
+id = "dataset-1"
+name = "트럭 데이터셋 v1"
+images = 1250
+annotations = 1250
+status = "ready"
+last_updated = "2024-03-20T00:00:00Z"
+
+[[training.models]]
+id = "model-1"
+name = "YOLOv8m 기본 모델"
+version = "v8.0.0"
+type = "pretrained"
+accuracy = 89.5
+size = "78.5MB"
+created_at = "2024-03-20T00:00:00Z"
+last_used = "2024-03-20T00:00:00Z"
+status = "active"
+tags = [ "기본", "공식",]
+
+[[training.deployed_models]]
+id = "deploy-1"
+name = "트럭 감지 모델 v1"
+format = "onnx"
+size = "45MB"
+target = "production"
+deployed_at = "2024-03-20T00:00:00Z"
+status = "active"
+
+[plc.data_mappings]
+[[plc.data_mappings.items]]
+id = "mapping1"
+name = "트럭 감지 신호"
+plc_address = "40001"
+data_type = "bit"
+access = "read"
+description = "트럭이 감지되면 1, 아니면 0"
+
+[[plc.data_mappings.items]]
+id = "mapping2"
+name = "카메라 트리거"
+plc_address = "40002"
+data_type = "bit"
+access = "write"
+description = "카메라 촬영 트리거 신호"
+
+[[plc.data_mappings.items]]
+id = "mapping3"
+name = "컨테이너 번호"
+plc_address = "40100"
+data_type = "string"
+access = "read_write"
+description = "인식된 컨테이너 번호"
+
+[training.hyperparameters]
+model_version = "yolov8"
+model_size = "medium"
+epochs = 100
+batch_size = 16
+image_size = 640
+learning_rate = 0.01
+weight_decay = 0.0005
+momentum = 0.937
+use_cosine_scheduler = true
+warmup_epochs = 3
+iou_threshold = 0.7
+conf_threshold = 0.25
+use_amp = true
+use_ema = true
+freeze_backbone = false
+freeze_backbone_epochs = 10
+use_fine_tuning = false
+pretrained_model = ""
+freeze_layers = "backbone"
+fine_tuning_learning_rate = 0.001
+only_train_new_layers = false
+
+[training.deployment]
+model_format = "onnx"
+target_device = "gpu"
+enable_quantization = true
+quantization_type = "int8"
+optimize_for_inference = true
+deployment_target = "production"
+model_version = "v1"
+model_name = "truck-detector"
+include_metadata = true

@@ -1,22 +1,33 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState, useEffect } from "react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Button } from "@/components/ui/button"
-import { Slider } from "@/components/ui/slider"
-import { Separator } from "@/components/ui/separator"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Play, RefreshCw } from "lucide-react"
-import { useSettingsApi, type CameraSettings } from "@/lib/api/settings-api"
+import { useState, useEffect } from "react";
+import {
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Play, RefreshCw } from "lucide-react";
+import { useSettingsApi, type CameraSettings } from "@/lib/api/settings-api";
 
 export default function CameraSettings() {
-  const [cameraTab, setCameraTab] = useState("rtsp")
+  const [cameraTab, setCameraTab] = useState("rtsp");
 
   const {
     cameraSettings,
@@ -26,10 +37,10 @@ export default function CameraSettings() {
     updateCameraSettings,
     testCameraConnection,
     connectCamera,
-  } = useSettingsApi()
+  } = useSettingsApi();
 
-  // 로컬 상태로 카메라 설정 관리
-  const [localSettings, setLocalSettings] = useState<CameraSettings>({
+  // 기본 설정값
+  const defaultSettings: CameraSettings = {
     rtspUrl: "",
     ipCameraUrl: "",
     usbCameraIndex: "0",
@@ -38,62 +49,71 @@ export default function CameraSettings() {
     enableAutoReconnect: true,
     reconnectInterval: 5,
     bufferSize: 10,
-  })
+  };
+
+  // 로컬 상태로 카메라 설정 관리
+  const [localSettings, setLocalSettings] =
+    useState<CameraSettings>(defaultSettings);
 
   // API에서 가져온 설정으로 로컬 상태 초기화
   useEffect(() => {
     if (cameraSettings) {
-      setLocalSettings(cameraSettings)
+      setLocalSettings({
+        ...defaultSettings,
+        ...cameraSettings,
+      });
     }
-  }, [cameraSettings])
+  }, [cameraSettings]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
+    const { name, value } = e.target;
     setLocalSettings({
       ...localSettings,
       [name]: value,
-    })
-  }
+    });
+  };
 
   const handleSwitchChange = (name: string, checked: boolean) => {
     setLocalSettings({
       ...localSettings,
       [name]: checked,
-    })
-  }
+    });
+  };
 
   const handleSelectChange = (name: string, value: string) => {
     setLocalSettings({
       ...localSettings,
       [name]: value,
-    })
-  }
+    });
+  };
 
   const handleSliderChange = (name: string, value: number[]) => {
     setLocalSettings({
       ...localSettings,
       [name]: value[0],
-    })
-  }
+    });
+  };
 
   const handleTestConnection = async () => {
-    await testCameraConnection(localSettings)
-  }
+    await testCameraConnection(localSettings);
+  };
 
   const handleConnect = async () => {
-    await connectCamera(localSettings)
-  }
+    await connectCamera(localSettings);
+  };
 
   // 설정 변경 시 자동 저장
   const handleSettingChange = async () => {
-    await updateCameraSettings(localSettings)
-  }
+    await updateCameraSettings(localSettings);
+  };
 
   return (
     <>
       <CardHeader>
         <CardTitle>카메라 설정</CardTitle>
-        <CardDescription>비디오 스트림 소스 및 카메라 설정을 관리합니다.</CardDescription>
+        <CardDescription>
+          비디오 스트림 소스 및 카메라 설정을 관리합니다.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <Tabs value={cameraTab} onValueChange={setCameraTab}>
@@ -114,7 +134,9 @@ export default function CameraSettings() {
                 onChange={handleInputChange}
                 onBlur={handleSettingChange}
               />
-              <p className="text-xs text-muted-foreground">예시: rtsp://admin:admin123@192.168.1.100:554/stream1</p>
+              <p className="text-xs text-muted-foreground">
+                예시: rtsp://admin:admin123@192.168.1.100:554/stream1
+              </p>
             </div>
           </TabsContent>
 
@@ -129,7 +151,9 @@ export default function CameraSettings() {
                 onChange={handleInputChange}
                 onBlur={handleSettingChange}
               />
-              <p className="text-xs text-muted-foreground">예시: http://192.168.1.100:8080/video</p>
+              <p className="text-xs text-muted-foreground">
+                예시: http://192.168.1.100:8080/video
+              </p>
             </div>
           </TabsContent>
 
@@ -145,7 +169,8 @@ export default function CameraSettings() {
                 onBlur={handleSettingChange}
               />
               <p className="text-xs text-muted-foreground">
-                일반적으로 첫 번째 카메라는 0, 두 번째 카메라는 1 등으로 지정됩니다.
+                일반적으로 첫 번째 카메라는 0, 두 번째 카메라는 1 등으로
+                지정됩니다.
               </p>
             </div>
           </TabsContent>
@@ -159,8 +184,8 @@ export default function CameraSettings() {
             <Select
               value={localSettings.resolution}
               onValueChange={(value) => {
-                handleSelectChange("resolution", value)
-                handleSettingChange()
+                handleSelectChange("resolution", value);
+                handleSettingChange();
               }}
             >
               <SelectTrigger id="resolution">
@@ -206,14 +231,16 @@ export default function CameraSettings() {
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="enableAutoReconnect">자동 재연결</Label>
-              <p className="text-xs text-muted-foreground">연결이 끊어졌을 때 자동으로 재연결을 시도합니다.</p>
+              <p className="text-xs text-muted-foreground">
+                연결이 끊어졌을 때 자동으로 재연결을 시도합니다.
+              </p>
             </div>
             <Switch
               id="enableAutoReconnect"
               checked={localSettings.enableAutoReconnect}
               onCheckedChange={(checked) => {
-                handleSwitchChange("enableAutoReconnect", checked)
-                handleSettingChange()
+                handleSwitchChange("enableAutoReconnect", checked);
+                handleSettingChange();
               }}
             />
           </div>
@@ -222,7 +249,9 @@ export default function CameraSettings() {
             <div className="space-y-2 pl-6 border-l-2 border-muted">
               <div className="flex justify-between">
                 <Label htmlFor="reconnectInterval">재연결 간격 (초)</Label>
-                <span className="text-sm">{localSettings.reconnectInterval}초</span>
+                <span className="text-sm">
+                  {localSettings.reconnectInterval}초
+                </span>
               </div>
               <Slider
                 id="reconnectInterval"
@@ -230,7 +259,9 @@ export default function CameraSettings() {
                 max={30}
                 step={1}
                 value={[localSettings.reconnectInterval]}
-                onValueChange={(value) => handleSliderChange("reconnectInterval", value)}
+                onValueChange={(value) =>
+                  handleSliderChange("reconnectInterval", value)
+                }
                 onValueCommit={() => handleSettingChange()}
               />
             </div>
@@ -259,16 +290,29 @@ export default function CameraSettings() {
         <Separator />
 
         <div className="flex flex-col sm:flex-row gap-4">
-          <Button variant="outline" className="flex-1" onClick={handleTestConnection} disabled={isCameraTesting}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isCameraTesting ? "animate-spin" : ""}`} />
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={handleTestConnection}
+            disabled={isCameraTesting}
+          >
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${
+                isCameraTesting ? "animate-spin" : ""
+              }`}
+            />
             {isCameraTesting ? "테스트 중..." : "연결 테스트"}
           </Button>
-          <Button className="flex-1" onClick={handleConnect} disabled={isCameraConnecting}>
+          <Button
+            className="flex-1"
+            onClick={handleConnect}
+            disabled={isCameraConnecting}
+          >
             <Play className="h-4 w-4 mr-2" />
             {isCameraConnecting ? "연결 중..." : "카메라 연결"}
           </Button>
         </div>
       </CardContent>
     </>
-  )
+  );
 }

@@ -17,51 +17,248 @@ import sys
 import platform
 import psutil
 import threading
+import toml  # TOML 설정 파일 처리를 위한 라이브러리 추가
 
 app = FastAPI()
 
-# 감지 설정 파일 경로
-SETTINGS_FILE = "backend/settings/detection_settings.json"
+# TOML 설정 파일 경로 및 디렉토리
+CONFIG_TOML_FILE = "backend/settings/config.toml"
+CONFIG_DIR = "backend/settings"
 
 # 설정 폴더 생성
-os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-
-# 초기 감지 설정
-DEFAULT_SETTINGS = {
-    "confidence_threshold": 0.5,  # 기본 임계값 50%
-    "enabled": True,              # 감지 활성화 여부
-    "ocr_enabled": True,          # OCR 활성화 여부
-    "last_updated": datetime.utcnow().isoformat()
-}
-
-# 설정 로드 함수
-def load_detection_settings():
-    try:
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, 'r') as f:
-                settings = json.load(f)
-                print(f"설정 파일을 로드했습니다: {SETTINGS_FILE}")
-                return settings
-    except Exception as e:
-        print(f"설정 파일 로드 오류: {e}")
-    
-    # 파일이 없거나 오류 발생 시 기본 설정 반환
-    return DEFAULT_SETTINGS.copy()
-
-# 설정 저장 함수
-def save_detection_settings(settings):
-    try:
-        with open(SETTINGS_FILE, 'w') as f:
-            json.dump(settings, f, indent=2)
-        print(f"설정 파일을 저장했습니다: {SETTINGS_FILE}")
-    except Exception as e:
-        print(f"설정 파일 저장 오류: {e}")
-
-# 감지 설정 관련 전역 변수
-detection_settings = load_detection_settings()
+os.makedirs(CONFIG_DIR, exist_ok=True)
 
 # 설정 변경에 대한 스레드 세이프 락
 settings_lock = threading.Lock()
+
+# 기본 설정값 정의 (모든 설정을 포함하도록 확장 필요)
+DEFAULT_CONFIG = {
+    "general": {
+        "app_name": "Truck Detection App",
+        "version": "1.0.0"
+    },
+    "detection": {
+        "confidence_threshold": 0.5,
+        "enabled": True,
+        "ocr_enabled": True,
+    },
+    "camera": {
+        "rtspUrl": "rtsp://example.com/stream",
+        "ipCameraUrl": "http://example.com/stream",
+        "usbCameraIndex": "0",
+        "resolution": "1920x1080",
+        "fps": 30,
+        "enableAutoReconnect": True,
+        "reconnectInterval": 5000,
+        "bufferSize": 10
+    },
+    "model": {
+        "modelVersion": "v8",
+        "modelSize": "large",
+        "customModelPath": "/models/custom.pt",
+        "confidenceThreshold": 0.5,
+        "iouThreshold": 0.45,
+        "maxDetections": 100,
+        "enableGPU": True,
+        "enableBatchProcessing": True,
+        "batchSize": 4,
+        "enableTensorRT": True,
+        "enableQuantization": True,
+        "quantizationType": "int8",
+        "inferenceDevice": "cuda:0",
+        "inputSize": 640,
+        "classes": ["truck", "car", "bus"],
+        "objectTypes": ["vehicle"],
+        "colorMode": "rgb",
+        "modelFormat": "pytorch",
+        "enableHalfPrecision": True
+    },
+    "ocr": {
+        "engine": "tesseract",
+        "language": "eng",
+        "customModelPath": "/models/ocr",
+        "confidenceThreshold": 0.8,
+        "enablePreprocessing": True,
+        "preprocessingSteps": ["grayscale", "threshold"],
+        "enableAutoRotation": True,
+        "maxRotationAngle": 45,
+        "enableDigitsOnly": True,
+        "minDigits": 4,
+        "maxDigits": 8,
+        "enableWhitelist": True,
+        "whitelist": "0123456789",
+        "enableBlacklist": False,
+        "blacklist": "",
+        "enableGPU": True
+    },
+    "tracking": {
+        "algorithm": "sort",
+        "maxDisappeared": 30,
+        "maxDistance": 50,
+        "minConfidence": 0.5,
+        "iouThreshold": 0.3,
+        "enableKalmanFilter": True,
+        "enableDirectionDetection": True,
+        "directionThreshold": 0.7,
+        "enableSizeFiltering": True,
+        "minWidth": 100,
+        "minHeight": 100,
+        "maxWidth": 800,
+        "maxHeight": 800,
+        "trackingMode": "normal"
+    },
+    "system": {
+        "processingMode": "gpu",
+        "maxThreads": 4,
+        "enableMultiprocessing": True,
+        "gpuMemoryLimit": 4096,
+        "maxFps": 30,
+        "enableFrameSkipping": True,
+        "frameSkipRate": 2,
+        "logLevel": "info",
+        "logRetentionDays": 30,
+        "enableImageSaving": True,
+        "imageSavePath": "/data/images",
+        "imageFormat": "jpg",
+        "imageQuality": 95,
+        "maxStorageSize": 1000000,
+        "enableNotifications": True,
+        "notifyOnError": True,
+        "notifyOnWarning": True,
+        "notifyOnSuccess": False,
+        "emailNotifications": False,
+        "emailRecipients": "",
+        "enableAutoBackup": True,
+        "backupInterval": 86400,
+        "backupPath": "/data/backups",
+        "maxBackupCount": 10
+    },
+    "training": {
+        "datasets_path": "/data/datasets",
+        "hyperparameters": {
+            "modelVersion": "yolov8",
+            "modelSize": "medium",
+            "epochs": 100,
+            "batchSize": 16,
+            "imageSize": 640,
+            "learningRate": 0.01,
+            "weightDecay": 0.0005,
+            "momentum": 0.937,
+            "useCosineScheduler": True,
+            "warmupEpochs": 3,
+            "iouThreshold": 0.7,
+            "confThreshold": 0.25,
+            "useAMP": True,
+            "useEMA": True,
+            "freezeBackbone": False,
+            "freezeBackboneEpochs": 10,
+            "useFineTuning": False,
+            "pretrainedModel": "",
+            "freezeLayers": "backbone",
+            "fineTuningLearningRate": 0.001,
+            "onlyTrainNewLayers": False
+        },
+        "deployment_settings": {
+            "modelFormat": "onnx",
+            "targetDevice": "gpu",
+            "enableQuantization": True,
+            "quantizationType": "int8",
+            "optimizeForInference": True,
+            "deploymentTarget": "production",
+            "modelVersion": "v1",
+            "modelName": "truck-detector",
+            "includeMetadata": True
+        }
+    },
+    "plc": {
+        "device": {
+            "id": "plc1",
+            "name": "메인 PLC",
+            "type": "modbus_tcp",
+            "connectionType": "tcp",
+            "ipAddress": "192.168.1.100",
+            "port": 502,
+            "timeout": 1000,
+            "status": "disconnected",
+        },
+        "protocol_config": {
+            "name": "modbus_tcp",
+            "autoConnect": True,
+            "reconnectInterval": 5000,
+            "maxReconnectAttempts": 5,
+        },
+        "mappings": [
+            {
+                "id": "mapping1",
+                "name": "트럭 감지 신호",
+                "plcAddress": "40001",
+                "dataType": "bit",
+                "access": "read",
+                "description": "트럭이 감지되면 1, 아니면 0",
+            },
+            {
+                "id": "mapping2",
+                "name": "카메라 트리거",
+                "plcAddress": "40002",
+                "dataType": "bit",
+                "access": "write",
+                "description": "카메라 촬영 트리거 신호",
+            },
+        ]
+    },
+    "rois": [
+        {
+            "id": "roi-default-1",
+            "name": "기본 입구 영역",
+            "type": "polygon",
+            "points": [
+                {"x": 0.1, "y": 0.1}, {"x": 0.4, "y": 0.1},
+                {"x": 0.4, "y": 0.3}, {"x": 0.1, "y": 0.3}
+            ],
+            "color": "#ff0000",
+            "enabled": True,
+            "actions": {
+                "detectTrucks": True, "performOcr": True,
+                "sendToPLC": False, "triggerAlarm": False
+            },
+            "minDetectionTime": 2,
+            "description": "기본 ROI 설정"
+        }
+    ]
+}
+
+# TOML 설정 로드 함수
+def load_config():
+    """
+    config.toml 파일에서 설정을 로드합니다.
+    파일이 없거나 오류 발생 시 기본 설정을 반환합니다.
+    """
+    if not os.path.exists(CONFIG_TOML_FILE):
+        print(f"'{CONFIG_TOML_FILE}'을 찾을 수 없습니다. 기본 설정으로 파일을 생성합니다.")
+        save_config(DEFAULT_CONFIG)
+        return DEFAULT_CONFIG.copy()
+    try:
+        with open(CONFIG_TOML_FILE, 'r', encoding='utf-8') as f:
+            config = toml.load(f)
+            print(f"설정 파일을 로드했습니다: {CONFIG_TOML_FILE}")
+            return config
+    except Exception as e:
+        print(f"설정 파일 로드 오류 ({CONFIG_TOML_FILE}): {e}. 기본 설정을 반환합니다.")
+        return DEFAULT_CONFIG.copy()  # 오류 발생 시 기본 설정 반환
+
+# TOML 설정 저장 함수
+def save_config(config_data):
+    """
+    설정을 config.toml 파일에 저장합니다.
+    """
+    try:
+        with open(CONFIG_TOML_FILE, 'w', encoding='utf-8') as f:
+            toml.dump(config_data, f)
+        print(f"설정 파일을 저장했습니다: {CONFIG_TOML_FILE}")
+        return True
+    except Exception as e:
+        print(f"설정 파일 저장 오류 ({CONFIG_TOML_FILE}): {e}")
+        return False
 
 # CORS 미들웨어 추가
 app.add_middleware(
@@ -416,145 +613,213 @@ def get_system_status():
 
 # 비디오 제어 API 제거됨
 
-@app.post("/api/detection/settings")
-async def update_detection_settings(request: Request):
-    try:
-        # 요청 본문에서 데이터 읽기
-        data = await request.json()
-        enabled = data.get("enabled", True)  # 기본값은 True
-        
-        # 스레드 세이프하게 전역 설정 변수 업데이트
-        with settings_lock:
-            detection_settings["enabled"] = enabled
-            detection_settings["last_updated"] = datetime.utcnow().isoformat()
-            # 변경된 설정 저장
-            save_detection_settings(detection_settings)
-        
-        print(f"객체 감지 설정 변경: {enabled}")
-        
-        return {"success": True, "enabled": enabled}
-    except Exception as e:
-        print(f"객체 감지 설정 오류: {str(e)}")
-        return {"success": False, "message": str(e)}
-
-@app.post("/api/ocr/settings")
-async def update_ocr_settings(request: Request):
-    try:
-        # 요청 본문에서 데이터 읽기
-        data = await request.json()
-        enabled = data.get("enabled", True)  # 기본값은 True
-        
-        # 스레드 세이프하게 전역 설정 변수 업데이트
-        with settings_lock:
-            detection_settings["ocr_enabled"] = enabled
-            detection_settings["last_updated"] = datetime.utcnow().isoformat()
-            # 변경된 설정 저장
-            save_detection_settings(detection_settings)
-        
-        print(f"OCR 설정 변경: {enabled}")
-        
-        return {"success": True, "enabled": enabled}
-    except Exception as e:
-        print(f"OCR 설정 오류: {str(e)}")
-        return {"success": False, "message": str(e)}
-
 @app.get("/api/detection/settings")
 async def get_detection_settings():
-    """현재 감지 설정 정보를 반환합니다."""
-    with settings_lock:
-        # 현재 감지 설정을 복사하여 반환
-        current_settings = detection_settings.copy()
-    
-    # 백분율 값도 추가
-    current_settings["confidence_threshold_percent"] = current_settings["confidence_threshold"] * 100
-    
-    return current_settings
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await get_section_settings_api("detection")
+
+@app.post("/api/detection/settings")
+async def update_detection_settings(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await update_section_settings_api("detection", request)
 
 @app.post("/api/detection/threshold")
 async def update_detection_threshold(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
     try:
-        # 요청 본문에서 데이터 읽기
         data = await request.json()
-        threshold = data.get("threshold", 0.5)  # 기본값은 0.5 (50%)
+        threshold = data.get("threshold", 0.5)
         
-        # 임계값 검증 (0-1 범위)
-        if not 0 <= threshold <= 1:
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "message": "임계값은 0과 1 사이여야 합니다."}
-            )
+        # threshold 값만 포함된 새 요청 생성
+        new_request = {
+            "confidence_threshold": threshold
+        }
+
+        # FastAPI Request 객체를 직접 수정할 수 없으므로, 가상의 Request 객체 생성
+        class CustomRequest:
+            async def json(self):
+                return new_request
         
-        # 스레드 세이프하게 전역 설정 변수 업데이트
-        with settings_lock:
-            detection_settings["confidence_threshold"] = threshold
-            detection_settings["last_updated"] = datetime.utcnow().isoformat()
-            # 변경된 설정 저장
-            save_detection_settings(detection_settings)
-        
-        print(f"감지 신뢰도 임계값 설정: {threshold:.2f} ({threshold*100:.0f}%)")
-        
-        # 설정 성공
-        return {"success": True, "threshold": threshold, "percentage": threshold * 100}
+        # 통합 설정 API 호출
+        return await update_section_settings_api("detection", CustomRequest())
     except Exception as e:
-        print(f"감지 신뢰도 임계값 설정 오류: {str(e)}")
+        print(f"감지 임계값 업데이트 오류: {str(e)}")
         return JSONResponse(
             status_code=500,
-            content={"success": False, "message": f"임계값 설정 중 오류가 발생했습니다: {str(e)}"}
+            content={"message": f"감지 임계값 업데이트 중 오류 발생: {str(e)}"}
         )
 
-# PLC 설정 가져오기
+@app.post("/api/ocr/settings")
+async def update_ocr_settings(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await update_section_settings_api("ocr", request)
+
 @app.get("/api/plc/settings")
 def get_plc_settings():
-    return {
-        "device": {
-            "id": "plc1",
-            "name": "메인 PLC",
-            "type": "modbus_tcp",
-            "connectionType": "tcp",
-            "ipAddress": "192.168.1.100",
-            "port": 502,
-            "timeout": 1000,
-            "status": "disconnected",
-        },
-        "protocol": "modbus_tcp",
-        "dataMappings": [
-            {
-                "id": "mapping1",
-                "name": "트럭 감지 신호",
-                "plcAddress": "40001",
-                "dataType": "bit",
-                "access": "read",
-                "description": "트럭이 감지되면 1, 아니면 0",
-            },
-            {
-                "id": "mapping2",
-                "name": "카메라 트리거",
-                "plcAddress": "40002",
-                "dataType": "bit",
-                "access": "write",
-                "description": "카메라 촬영 트리거 신호",
-            },
-            {
-                "id": "mapping3",
-                "name": "컨테이너 번호",
-                "plcAddress": "40100",
-                "dataType": "string",
-                "access": "read_write",
-                "description": "인식된 컨테이너 번호",
-            },
-        ],
-        "autoConnect": True,
-        "reconnectInterval": 5000,
-        "maxReconnectAttempts": 5,
-    }
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출 (비동기 함수를 동기 환경에서 호출할 수 없으므로 직접 구현)
+    config = load_config()
+    return config.get("plc", {})
 
-# PLC 장치 정보 업데이트
 @app.put("/api/plc/device")
 async def update_plc_device(request: Request):
-    data = await request.json()
-    return data
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    try:
+        data = await request.json()
+        
+        # 'plc.device'로 경로 지정하여 업데이트
+        # FastAPI Request 객체를 직접 수정할 수 없으므로, 가상의 Request 객체 생성
+        class CustomRequest:
+            async def json(self):
+                return data
+        
+        # 통합 설정 API 호출
+        return await update_section_settings_api("plc.device", CustomRequest())
+    except Exception as e:
+        print(f"PLC 장치 설정 업데이트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 장치 설정 업데이트 중 오류 발생: {str(e)}"}
+        )
 
-# PLC 연결 시도
+@app.put("/api/plc/protocol")
+async def update_plc_protocol(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    try:
+        data = await request.json()
+        
+        # 'plc.protocol_config'로 경로 지정하여 업데이트
+        class CustomRequest:
+            async def json(self):
+                return data
+        
+        # 통합 설정 API 호출
+        return await update_section_settings_api("plc.protocol_config", CustomRequest())
+    except Exception as e:
+        print(f"PLC 프로토콜 설정 업데이트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 프로토콜 설정 업데이트 중 오류 발생: {str(e)}"}
+        )
+
+@app.get("/api/plc/mappings")
+def get_data_mappings():
+    config = load_config()
+    mappings = config.get("plc", {}).get("mappings", [])
+    
+    # 매핑이 없는 경우, 기본값 반환
+    if not mappings:
+        mappings = DEFAULT_CONFIG.get("plc", {}).get("mappings", [])
+    
+    return mappings
+
+@app.post("/api/plc/mappings")
+async def add_data_mapping(request: Request):
+    try:
+        data = await request.json()
+        
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'plc' 섹션이 없으면 생성
+        if "plc" not in config:
+            config["plc"] = {}
+        if "mappings" not in config["plc"]:
+            config["plc"]["mappings"] = []
+        
+        # 매핑 추가
+        config["plc"]["mappings"].append(data)
+        save_config(config)
+        
+        return data
+    except Exception as e:
+        print(f"PLC 데이터 매핑 추가 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 데이터 매핑 추가 중 오류 발생: {str(e)}"}
+        )
+
+@app.put("/api/plc/mappings/{mapping_id}")
+async def update_data_mapping(mapping_id: str, request: Request):
+    try:
+        data = await request.json()
+        data["id"] = mapping_id  # ID 일관성 유지
+        
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'plc' 섹션 확인
+        if "plc" not in config or "mappings" not in config["plc"]:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "PLC 매핑 설정을 찾을 수 없습니다."}
+            )
+        
+        # 매핑 ID로 업데이트할 항목 찾기
+        found = False
+        for i, mapping in enumerate(config["plc"]["mappings"]):
+            if mapping.get("id") == mapping_id:
+                config["plc"]["mappings"][i] = data
+                found = True
+                break
+        
+        if not found:
+            return JSONResponse(
+                status_code=404,
+                content={"message": f"ID가 '{mapping_id}'인 매핑을 찾을 수 없습니다."}
+            )
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return data
+    except Exception as e:
+        print(f"PLC 데이터 매핑 업데이트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 데이터 매핑 업데이트 중 오류 발생: {str(e)}"}
+        )
+
+@app.delete("/api/plc/mappings/{mapping_id}")
+def delete_data_mapping(mapping_id: str):
+    try:
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'plc' 섹션 확인
+        if "plc" not in config or "mappings" not in config["plc"]:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "PLC 매핑 설정을 찾을 수 없습니다."}
+            )
+        
+        # 매핑 ID로 삭제할 항목 찾기
+        original_length = len(config["plc"]["mappings"])
+        config["plc"]["mappings"] = [
+            mapping for mapping in config["plc"]["mappings"]
+            if mapping.get("id") != mapping_id
+        ]
+        
+        if len(config["plc"]["mappings"]) == original_length:
+            return JSONResponse(
+                status_code=404,
+                content={"message": f"ID가 '{mapping_id}'인 매핑을 찾을 수 없습니다."}
+            )
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return {}
+    except Exception as e:
+        print(f"PLC 데이터 매핑 삭제 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 데이터 매핑 삭제 중 오류 발생: {str(e)}"}
+        )
+
 @app.post("/api/plc/connect/{device_id}")
 def connect_plc(device_id: str):
     return {
@@ -563,77 +828,134 @@ def connect_plc(device_id: str):
         "lastConnected": __import__("datetime").datetime.utcnow().isoformat(),
     }
 
-# PLC 연결 해제
 @app.post("/api/plc/disconnect/{device_id}")
 def disconnect_plc(device_id: str):
     return {"id": device_id, "status": "disconnected"}
 
-# 프로토콜 설정 업데이트
-@app.put("/api/plc/protocol")
-async def update_plc_protocol(request: Request):
-    data = await request.json()
-    return {"protocol": data.get("protocol")}
-
-# 데이터 매핑 목록 가져오기
 @app.get("/api/plc/mappings")
 def get_data_mappings():
-    return [
-        {
-            "id": "mapping1",
-            "name": "트럭 감지 신호",
-            "plcAddress": "40001",
-            "dataType": "bit",
-            "access": "read",
-            "description": "트럭이 감지되면 1, 아니면 0",
-        },
-        {
-            "id": "mapping2",
-            "name": "카메라 트리거",
-            "plcAddress": "40002",
-            "dataType": "bit",
-            "access": "write",
-            "description": "카메라 촬영 트리거 신호",
-        },
-        {
-            "id": "mapping3",
-            "name": "컨테이너 번호",
-            "plcAddress": "40100",
-            "dataType": "string",
-            "access": "read_write",
-            "description": "인식된 컨테이너 번호",
-        },
-    ]
+    config = load_config()
+    mappings = config.get("plc", {}).get("mappings", [])
+    
+    # 매핑이 없는 경우, 기본값 반환
+    if not mappings:
+        mappings = DEFAULT_CONFIG.get("plc", {}).get("mappings", [])
+    
+    return mappings
 
-# 데이터 매핑 추가
 @app.post("/api/plc/mappings")
 async def add_data_mapping(request: Request):
-    data = await request.json()
-    return data
+    try:
+        data = await request.json()
+        
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'plc' 섹션이 없으면 생성
+        if "plc" not in config:
+            config["plc"] = {}
+        if "mappings" not in config["plc"]:
+            config["plc"]["mappings"] = []
+        
+        # 매핑 추가
+        config["plc"]["mappings"].append(data)
+        save_config(config)
+        
+        return data
+    except Exception as e:
+        print(f"PLC 데이터 매핑 추가 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 데이터 매핑 추가 중 오류 발생: {str(e)}"}
+        )
 
-# 데이터 매핑 업데이트
 @app.put("/api/plc/mappings/{mapping_id}")
 async def update_data_mapping(mapping_id: str, request: Request):
-    data = await request.json()
-    data["id"] = mapping_id
-    return data
+    try:
+        data = await request.json()
+        data["id"] = mapping_id  # ID 일관성 유지
+        
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'plc' 섹션 확인
+        if "plc" not in config or "mappings" not in config["plc"]:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "PLC 매핑 설정을 찾을 수 없습니다."}
+            )
+        
+        # 매핑 ID로 업데이트할 항목 찾기
+        found = False
+        for i, mapping in enumerate(config["plc"]["mappings"]):
+            if mapping.get("id") == mapping_id:
+                config["plc"]["mappings"][i] = data
+                found = True
+                break
+        
+        if not found:
+            return JSONResponse(
+                status_code=404,
+                content={"message": f"ID가 '{mapping_id}'인 매핑을 찾을 수 없습니다."}
+            )
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return data
+    except Exception as e:
+        print(f"PLC 데이터 매핑 업데이트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 데이터 매핑 업데이트 중 오류 발생: {str(e)}"}
+        )
 
-# 데이터 매핑 삭제
 @app.delete("/api/plc/mappings/{mapping_id}")
 def delete_data_mapping(mapping_id: str):
-    return {}
+    try:
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'plc' 섹션 확인
+        if "plc" not in config or "mappings" not in config["plc"]:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "PLC 매핑 설정을 찾을 수 없습니다."}
+            )
+        
+        # 매핑 ID로 삭제할 항목 찾기
+        original_length = len(config["plc"]["mappings"])
+        config["plc"]["mappings"] = [
+            mapping for mapping in config["plc"]["mappings"]
+            if mapping.get("id") != mapping_id
+        ]
+        
+        if len(config["plc"]["mappings"]) == original_length:
+            return JSONResponse(
+                status_code=404,
+                content={"message": f"ID가 '{mapping_id}'인 매핑을 찾을 수 없습니다."}
+            )
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return {}
+    except Exception as e:
+        print(f"PLC 데이터 매핑 삭제 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"PLC 데이터 매핑 삭제 중 오류 발생: {str(e)}"}
+        )
 
-# PLC 데이터 읽기
 @app.post("/api/plc/read")
 async def read_plc_data(request: Request):
     data = await request.json()
     return {"value": "0"}
 
-# PLC 데이터 쓰기
 @app.post("/api/plc/write")
 async def write_plc_data(request: Request):
     return {}
 
-# 통신 로그 가져오기
 @app.get("/api/plc/logs")
 def get_communication_logs():
     logs = []
@@ -652,7 +974,6 @@ def get_communication_logs():
         )
     return logs
 
-# 통계 데이터 가져오기
 @app.get("/api/plc/statistics")
 def get_plc_statistics():
     return {
@@ -665,7 +986,6 @@ def get_plc_statistics():
         "lastErrorTimestamp": __import__("datetime").datetime.utcnow().isoformat(),
     }
 
-# OCR 로그 목록 (POST)
 @app.post("/api/logs/ocr")
 async def post_logs_ocr(request: Request):
     filters = await request.json()
@@ -686,7 +1006,6 @@ async def post_logs_ocr(request: Request):
         for i in range(1, 6)
     ]
 
-# OCR 로그 통계 (POST)
 @app.post("/api/logs/stats")
 async def post_logs_stats(request: Request):
     _ = await request.json()
@@ -718,14 +1037,12 @@ async def post_logs_stats(request: Request):
         },
     }
 
-# OCR 로그 내보내기 (POST)
 @app.post("/api/logs/export")
 async def post_logs_export(request: Request):
     data = await request.json()
     fmt = data.get("format", "csv")
     return {"downloadUrl": f"/static/exports/logs.{fmt}"}
 
-# WebSocket: 새 OCR 로그 구독
 @app.websocket("/api/logs/subscribe")
 async def ws_logs_subscribe(websocket: WebSocket):
     await websocket.accept()
@@ -745,152 +1062,140 @@ async def ws_logs_subscribe(websocket: WebSocket):
         await websocket.send_json({"type": "newLog", "log": log})
         await asyncio.sleep(5)
 
-# Camera Settings
 @app.get("/api/settings/camera")
 def get_camera_settings():
-    return {
-        "rtspUrl": "rtsp://example.com/stream",
-        "ipCameraUrl": "http://example.com/stream",
-        "usbCameraIndex": "0",
-        "resolution": "1920x1080",
-        "fps": 30,
-        "enableAutoReconnect": True,
-        "reconnectInterval": 5000,
-        "bufferSize": 10
-    }
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출 (비동기 함수를 동기 환경에서 호출할 수 없으므로 직접 구현)
+    config = load_config()
+    return config.get("camera", {})
 
 @app.put("/api/settings/camera")
-async def update_camera_settings(settings: CameraSettings):
-    return settings
+async def update_camera_settings(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await update_section_settings_api("camera", request)
 
 @app.post("/api/settings/camera/test")
-async def test_camera_connection(settings: CameraSettings):
-    return {"success": True, "message": "카메라 연결 테스트 성공"}
+async def test_camera_connection(request: Request):
+    try:
+        data = await request.json()
+        # 실제 카메라 연결 테스트 로직 (구현 필요)
+        return {"success": True, "message": "카메라 연결 테스트 성공"}
+    except Exception as e:
+        print(f"카메라 연결 테스트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"카메라 연결 테스트 중 오류 발생: {str(e)}"}
+        )
 
 @app.post("/api/settings/camera/connect")
-async def connect_camera(settings: CameraSettings):
-    return {"success": True, "message": "카메라 연결 성공"}
+async def connect_camera(request: Request):
+    try:
+        data = await request.json()
+        # 실제 카메라 연결 로직 (구현 필요)
+        return {"success": True, "message": "카메라 연결 성공"}
+    except Exception as e:
+        print(f"카메라 연결 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"카메라 연결 중 오류 발생: {str(e)}"}
+        )
 
-# Model Settings
 @app.get("/api/settings/model")
 def get_model_settings():
-    return {
-        "modelVersion": "v8",
-        "modelSize": "large",
-        "customModelPath": "/models/custom.pt",
-        "confidenceThreshold": 0.5,
-        "iouThreshold": 0.45,
-        "maxDetections": 100,
-        "enableGPU": True,
-        "enableBatchProcessing": True,
-        "batchSize": 4,
-        "enableTensorRT": True,
-        "enableQuantization": True,
-        "quantizationType": "int8"
-    }
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출 (비동기 함수를 동기 환경에서 호출할 수 없으므로 직접 구현)
+    config = load_config()
+    return config.get("model", {})
 
 @app.put("/api/settings/model")
-async def update_model_settings(settings: ModelSettings):
-    return settings
+async def update_model_settings(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await update_section_settings_api("model", request)
 
 @app.post("/api/settings/model/load")
-async def load_model(settings: ModelSettings):
-    return {"success": True, "message": "모델 로드 성공"}
+async def load_model(request: Request):
+    try:
+        data = await request.json()
+        # 실제 모델 로드 로직 (구현 필요)
+        return {"success": True, "message": "모델 로드 성공"}
+    except Exception as e:
+        print(f"모델 로드 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"모델 로드 중 오류 발생: {str(e)}"}
+        )
 
-# OCR Settings
 @app.get("/api/settings/ocr")
 def get_ocr_settings():
-    return {
-        "engine": "tesseract",
-        "language": "eng",
-        "customModelPath": "/models/ocr",
-        "confidenceThreshold": 0.8,
-        "enablePreprocessing": True,
-        "preprocessingSteps": ["grayscale", "threshold"],
-        "enableAutoRotation": True,
-        "maxRotationAngle": 45,
-        "enableDigitsOnly": True,
-        "minDigits": 4,
-        "maxDigits": 8,
-        "enableWhitelist": True,
-        "whitelist": "0123456789",
-        "enableBlacklist": False,
-        "blacklist": "",
-        "enableGPU": True
-    }
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출 (비동기 함수를 동기 환경에서 호출할 수 없으므로 직접 구현)
+    config = load_config()
+    return config.get("ocr", {})
 
 @app.put("/api/settings/ocr")
-async def update_ocr_settings(settings: OcrSettings):
-    return settings
+async def update_ocr_settings(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await update_section_settings_api("ocr", request)
 
 @app.post("/api/settings/ocr/test")
-async def test_ocr(settings: OcrSettings):
-    return {"success": True, "message": "OCR 테스트 성공", "text": "123456"}
+async def test_ocr(request: Request):
+    try:
+        data = await request.json()
+        # 실제 OCR 테스트 로직 (구현 필요)
+        return {"success": True, "message": "OCR 테스트 성공", "text": "123456"}
+    except Exception as e:
+        print(f"OCR 테스트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"OCR 테스트 중 오류 발생: {str(e)}"}
+        )
 
-# Tracking Settings
 @app.get("/api/settings/tracking")
 def get_tracking_settings():
-    return {
-        "algorithm": "sort",
-        "maxDisappeared": 30,
-        "maxDistance": 50,
-        "minConfidence": 0.5,
-        "iouThreshold": 0.3,
-        "enableKalmanFilter": True,
-        "enableDirectionDetection": True,
-        "directionThreshold": 0.7,
-        "enableSizeFiltering": True,
-        "minWidth": 100,
-        "minHeight": 100,
-        "maxWidth": 800,
-        "maxHeight": 800,
-        "trackingMode": "normal"
-    }
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출 (비동기 함수를 동기 환경에서 호출할 수 없으므로 직접 구현)
+    config = load_config()
+    return config.get("tracking", {})
 
 @app.put("/api/settings/tracking")
-async def update_tracking_settings(settings: TrackingSettings):
-    return settings
+async def update_tracking_settings(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await update_section_settings_api("tracking", request)
 
 @app.post("/api/settings/tracking/test")
-async def test_tracking(settings: TrackingSettings):
-    return {"success": True, "message": "추적 테스트 성공"}
+async def test_tracking(request: Request):
+    try:
+        data = await request.json()
+        # 실제 트래킹 테스트 로직 (구현 필요)
+        return {"success": True, "message": "추적 테스트 성공"}
+    except Exception as e:
+        print(f"트래킹 테스트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"트래킹 테스트 중 오류 발생: {str(e)}"}
+        )
 
-# System Settings
 @app.get("/api/settings/system")
 def get_system_settings():
-    return {
-        "processingMode": "gpu",
-        "maxThreads": 4,
-        "enableMultiprocessing": True,
-        "gpuMemoryLimit": 4096,
-        "maxFps": 30,
-        "enableFrameSkipping": True,
-        "frameSkipRate": 2,
-        "logLevel": "info",
-        "logRetentionDays": 30,
-        "enableImageSaving": True,
-        "imageSavePath": "/data/images",
-        "imageFormat": "jpg",
-        "imageQuality": 95,
-        "maxStorageSize": 1000000,
-        "enableNotifications": True,
-        "notifyOnError": True,
-        "notifyOnWarning": True,
-        "notifyOnSuccess": False,
-        "emailNotifications": False,
-        "emailRecipients": "",
-        "enableAutoBackup": True,
-        "backupInterval": 86400,
-        "backupPath": "/data/backups",
-        "maxBackupCount": 10
-    }
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출 (비동기 함수를 동기 환경에서 호출할 수 없으므로 직접 구현)
+    config = load_config()
+    return config.get("system", {})
 
 @app.put("/api/settings/system")
-async def update_system_settings(settings: SystemSettings):
-    return settings
+async def update_system_settings(request: Request):
+    """기존 설정 API를 새 통합 설정 API로 리다이렉션"""
+    # 통합 설정 API 호출
+    return await update_section_settings_api("system", request)
 
 @app.get("/api/settings/system/info")
 def get_system_info():
+    # 실제 시스템 정보 수집 로직 (구현 필요)
+    # 현재는 더미 데이터 반환
     return {
         "cpuUsage": 45.5,
         "memoryUsage": {
@@ -908,22 +1213,52 @@ def get_system_info():
 
 @app.post("/api/settings/system/logs/clear")
 def clear_logs():
-    return {"success": True, "message": "로그 삭제 성공"}
+    try:
+        # 실제 로그 삭제 로직 (구현 필요)
+        return {"success": True, "message": "로그 삭제 성공"}
+    except Exception as e:
+        print(f"로그 삭제 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"로그 삭제 중 오류 발생: {str(e)}"}
+        )
 
 @app.post("/api/settings/system/backup")
 def backup_system():
-    return {"success": True, "message": "시스템 백업 성공", "backupPath": "/data/backups/backup_20240320.zip"}
+    try:
+        # 실제 시스템 백업 로직 (구현 필요)
+        backup_path = f"/data/backups/backup_{datetime.utcnow().strftime('%Y%m%d')}.zip"
+        return {"success": True, "message": "시스템 백업 성공", "backupPath": backup_path}
+    except Exception as e:
+        print(f"시스템 백업 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"시스템 백업 중 오류 발생: {str(e)}"}
+        )
 
-# Save and Reset
 @app.post("/api/settings/save")
 def save_all_settings():
-    return {"success": True, "message": "모든 설정 저장 성공"}
+    """모든 설정을 저장합니다."""
+    config = load_config()
+    if save_config(config):
+        return {"success": True, "message": "모든 설정이 성공적으로 저장되었습니다."}
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "설정 저장 중 오류가 발생했습니다."}
+        )
 
 @app.post("/api/settings/reset")
 def reset_settings():
-    return {"success": True, "message": "설정 초기화 성공"}
+    """모든 설정을 기본값으로 재설정합니다."""
+    if save_config(DEFAULT_CONFIG):
+        return {"success": True, "message": "모든 설정이 기본값으로 재설정되었습니다."}
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "설정 재설정 중 오류가 발생했습니다."}
+        )
 
-# 트레이닝 관련 엔드포인트
 @app.get("/api/training/datasets")
 def get_datasets():
     return [
@@ -954,33 +1289,42 @@ def delete_dataset(dataset_id: str):
 
 @app.get("/api/training/hyperparameters")
 def get_hyperparameters():
-    return {
-        "modelVersion": "yolov8",
-        "modelSize": "medium",
-        "epochs": 100,
-        "batchSize": 16,
-        "imageSize": 640,
-        "learningRate": 0.01,
-        "weightDecay": 0.0005,
-        "momentum": 0.937,
-        "useCosineScheduler": True,
-        "warmupEpochs": 3,
-        "iouThreshold": 0.7,
-        "confThreshold": 0.25,
-        "useAMP": True,
-        "useEMA": True,
-        "freezeBackbone": False,
-        "freezeBackboneEpochs": 10,
-        "useFineTuning": False,
-        "pretrainedModel": "",
-        "freezeLayers": "backbone",
-        "fineTuningLearningRate": 0.001,
-        "onlyTrainNewLayers": False
-    }
+    config = load_config()
+    hyperparameters = config.get("training", {}).get("hyperparameters", {})
+    
+    # 하이퍼파라미터 설정이 없는 경우, 기본값 반환
+    if not hyperparameters:
+        hyperparameters = DEFAULT_CONFIG.get("training", {}).get("hyperparameters", {})
+    
+    return hyperparameters
 
 @app.put("/api/training/hyperparameters")
-async def update_hyperparameters(hyperparameters: Hyperparameters):
-    return hyperparameters
+async def update_hyperparameters(request: Request):
+    try:
+        data = await request.json()
+        
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'training' 섹션이 없으면 생성
+        if "training" not in config:
+            config["training"] = {}
+        if "hyperparameters" not in config["training"]:
+            config["training"]["hyperparameters"] = {}
+        
+        # 하이퍼파라미터 설정 업데이트
+        config["training"]["hyperparameters"] = data
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return data
+    except Exception as e:
+        print(f"하이퍼파라미터 설정 업데이트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"하이퍼파라미터 설정 업데이트 중 오류 발생: {str(e)}"}
+        )
 
 @app.get("/api/training/models")
 def get_models():
@@ -1090,25 +1434,55 @@ def get_test_results(model_id: str):
 
 @app.get("/api/training/deployment/settings")
 def get_deployment_settings():
-    return {
-        "modelFormat": "onnx",
-        "targetDevice": "gpu",
-        "enableQuantization": True,
-        "quantizationType": "int8",
-        "optimizeForInference": True,
-        "deploymentTarget": "production",
-        "modelVersion": "v1",
-        "modelName": "truck-detector",
-        "includeMetadata": True
-    }
+    config = load_config()
+    deployment_settings = config.get("training", {}).get("deployment_settings", {})
+    
+    # 배포 설정이 없는 경우, 기본값 반환
+    if not deployment_settings:
+        deployment_settings = DEFAULT_CONFIG.get("training", {}).get("deployment_settings", {})
+    
+    return deployment_settings
 
 @app.put("/api/training/deployment/settings")
-async def update_deployment_settings(settings: DeploymentSettings):
-    return settings
+async def update_deployment_settings(request: Request):
+    try:
+        data = await request.json()
+        
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'training' 섹션이 없으면 생성
+        if "training" not in config:
+            config["training"] = {}
+        if "deployment_settings" not in config["training"]:
+            config["training"]["deployment_settings"] = {}
+        
+        # 배포 설정 업데이트
+        config["training"]["deployment_settings"] = data
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return data
+    except Exception as e:
+        print(f"배포 설정 업데이트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"배포 설정 업데이트 중 오류 발생: {str(e)}"}
+        )
 
 @app.post("/api/training/deploy/{model_id}")
-async def deploy_model(model_id: str, settings: DeploymentSettings):
-    return {"deploymentId": "deploy-1"}
+async def deploy_model(model_id: str, request: Request):
+    try:
+        data = await request.json()
+        # 모델 배포 로직 (실제 구현 필요)
+        return {"deploymentId": "deploy-1"}
+    except Exception as e:
+        print(f"모델 배포 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"모델 배포 중 오류 발생: {str(e)}"}
+        )
 
 @app.get("/api/training/deployed-models")
 def get_deployed_models():
@@ -1124,192 +1498,72 @@ def get_deployed_models():
         }
     ]
 
-# WebSocket 연결 관리를 위한 클래스
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-        self.video_connections: List[WebSocket] = []
-        self.meta_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket, connection_type: str):
-        try:
-            await websocket.accept()
-            if connection_type == "video":
-                self.video_connections.append(websocket)
-            elif connection_type == "meta":
-                self.meta_connections.append(websocket)
-            self.active_connections.append(websocket)
-            print(f"{connection_type} WebSocket 연결됨")
-        except Exception as e:
-            print(f"WebSocket 연결 오류: {str(e)}")
-            raise
-
-    def disconnect(self, websocket: WebSocket, connection_type: str):
-        try:
-            if connection_type == "video" and websocket in self.video_connections:
-                self.video_connections.remove(websocket)
-            elif connection_type == "meta" and websocket in self.meta_connections:
-                self.meta_connections.remove(websocket)
-            if websocket in self.active_connections:
-                self.active_connections.remove(websocket)
-            print(f"{connection_type} WebSocket 연결 해제됨")
-        except Exception as e:
-            print(f"WebSocket 연결 해제 오류: {str(e)}")
-
-    async def broadcast_video(self, frame: bytes):
-        disconnected = []
-        for connection in self.video_connections:
-            try:
-                await connection.send_bytes(frame)
-            except Exception as e:
-                print(f"비디오 전송 오류: {str(e)}")
-                disconnected.append(connection)
-        
-        for connection in disconnected:
-            self.disconnect(connection, "video")
-
-    async def broadcast_meta(self, data: dict):
-        disconnected = []
-        for connection in self.meta_connections:
-            try:
-                await connection.send_text(json.dumps(data))
-            except Exception as e:
-                print(f"메타데이터 전송 오류: {str(e)}")
-                disconnected.append(connection)
-        
-        for connection in disconnected:
-            self.disconnect(connection, "meta")
-
-manager = ConnectionManager()
-
-# 비디오 스트림을 위한 WebSocket 엔드포인트
-@app.websocket("/ws/video")
-async def websocket_video_endpoint(websocket: WebSocket):
-    try:
-        await manager.connect(websocket, "video")
-        while True:
-            try:
-                # 테스트용 더미 프레임 생성
-                frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                cv2.putText(frame, "Test Frame", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                _, buffer = cv2.imencode('.jpg', frame)
-                await manager.broadcast_video(buffer.tobytes())
-                await asyncio.sleep(0.033)  # 약 30 FPS
-            except Exception as e:
-                print(f"비디오 프레임 생성/전송 오류: {str(e)}")
-                break
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, "video")
-    except Exception as e:
-        print(f"비디오 WebSocket 오류: {str(e)}")
-        manager.disconnect(websocket, "video")
-
-# 메타데이터를 위한 WebSocket 엔드포인트
-@app.websocket("/ws/meta")
-async def websocket_meta_endpoint(websocket: WebSocket):
-    try:
-        await manager.connect(websocket, "meta")
-        while True:
-            try:
-                # 테스트용 더미 메타데이터 생성
-                data = {
-                    "detections": [
-                        {
-                            "x": 100,
-                            "y": 100,
-                            "width": 200,
-                            "height": 100,
-                            "confidence": 0.95,
-                            "label": "truck",
-                            "number": "1234"
-                        }
-                    ]
-                }
-                await manager.broadcast_meta(data)
-                await asyncio.sleep(0.1)  # 10 FPS
-            except Exception as e:
-                print(f"메타데이터 생성/전송 오류: {str(e)}")
-                break
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, "meta")
-    except Exception as e:
-        print(f"메타 WebSocket 오류: {str(e)}")
-        manager.disconnect(websocket, "meta")
-
-# ROI 관련 엔드포인트
-@app.get("/api/roi")
-def get_all_rois():
-    return [
-        {
-            "id": "roi-1",
-            "name": "입구 영역",
-            "type": "polygon",
-            "points": [
-                {"x": 100, "y": 100},
-                {"x": 300, "y": 100},
-                {"x": 300, "y": 200},
-                {"x": 100, "y": 200}
-            ],
-            "color": "#ff0000",
-            "enabled": True,
-            "actions": {
-                "detectTrucks": True,
-                "performOcr": True,
-                "sendToPLC": True,
-                "triggerAlarm": False
-            },
-            "minDetectionTime": 2,
-            "description": "트럭이 입장하는 영역"
-        },
-        {
-            "id": "roi-2",
-            "name": "출구 영역",
-            "type": "rectangle",
-            "points": [
-                {"x": 400, "y": 300},
-                {"x": 600, "y": 400}
-            ],
-            "color": "#00ff00",
-            "enabled": True,
-            "actions": {
-                "detectTrucks": True,
-                "performOcr": False,
-                "sendToPLC": True,
-                "triggerAlarm": False
-            },
-            "minDetectionTime": 1,
-            "description": "트럭이 퇴장하는 영역"
-        }
-    ]
-
-@app.get("/api/roi/{roi_id}")
-def get_roi(roi_id: str):
-    rois = get_all_rois()
-    for roi in rois:
-        if roi["id"] == roi_id:
-            return roi
-    return None
-
-@app.post("/api/roi")
-async def create_roi(roi: RoiData):
-    return roi
-
-@app.put("/api/roi/{roi_id}")
-async def update_roi(roi_id: str, roi: RoiData):
-    return roi
-
 @app.delete("/api/roi/{roi_id}")
 def delete_roi(roi_id: str):
-    return {"success": True, "message": "ROI 삭제 성공"}
+    try:
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'rois' 섹션 확인
+        if "rois" not in config:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "ROI 설정을 찾을 수 없습니다."}
+            )
+        
+        # 지정된 ID의 ROI 찾기 및 삭제
+        original_length = len(config["rois"])
+        config["rois"] = [roi for roi in config["rois"] if roi.get("id") != roi_id]
+        
+        if len(config["rois"]) == original_length:
+            return JSONResponse(
+                status_code=404,
+                content={"message": f"ID가 '{roi_id}'인 ROI를 찾을 수 없습니다."}
+            )
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return {"success": True, "message": "ROI 삭제 성공"}
+    except Exception as e:
+        print(f"ROI 삭제 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"ROI 삭제 중 오류 발생: {str(e)}"}
+        )
 
 @app.get("/api/roi/export")
 def export_roi_config():
-    rois = get_all_rois()
+    config = load_config()
+    rois = config.get("rois", [])
+    
+    # ROI가 없는 경우, 기본값 반환
+    if not rois:
+        rois = DEFAULT_CONFIG.get("rois", [])
+    
     return rois
 
 @app.post("/api/roi/import")
-async def import_roi_config(rois: List[RoiData]):
-    return {"success": True, "message": "ROI 설정 가져오기 성공"}
+async def import_roi_config(request: Request):
+    try:
+        rois = await request.json()
+        
+        # 전체 설정 로드
+        config = load_config()
+        
+        # 'rois' 섹션 업데이트
+        config["rois"] = rois
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        return {"success": True, "message": "ROI 설정 가져오기 성공"}
+    except Exception as e:
+        print(f"ROI 가져오기 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"message": f"ROI 설정 가져오기 중 오류 발생: {str(e)}"}
+        )
 
 @app.get("/api/roi/test-image")
 def get_test_image():
@@ -1326,7 +1580,6 @@ def start_roi_test():
 def stop_roi_test():
     return {"success": True, "message": "ROI 테스트 중지"}
 
-# 통계 관련 엔드포인트 추가
 @app.get("/api/stats/detection")
 def get_detection_statistics(from_date: str, to_date: str):
     return {
@@ -1424,10 +1677,118 @@ def get_processing_time_statistics(from_date: str, to_date: str):
         "processingsPerSecond": 4.1
     }
 
-# 👇 바로 실행 가능하도록 구성
-def main():
-    uvicorn.run("main:app", host="0.0.0.0", port=8010, reload=True)
+@app.get("/api/settings/all")
+async def get_all_settings_api():
+    """모든 설정을 반환합니다."""
+    return load_config()
 
+@app.get("/api/settings/{section_path:path}")
+async def get_section_settings_api(section_path: str):
+    """
+    지정된 섹션의 설정을 반환합니다. 
+    섹션 경로는 '.'으로 구분됩니다 (예: 'training.hyperparameters').
+    """
+    config = load_config()
+    parts = section_path.split('.')
+    current_level = config
+    try:
+        for part in parts:
+            if isinstance(current_level, list):
+                # 리스트인 경우, 정확한 경로가 아니면 오류 발생
+                return JSONResponse(
+                    status_code=400, 
+                    content={"message": f"경로 '{section_path}'는 리스트에 키로 접근하려고 합니다. 전체 리스트를 반환합니다."}
+                )
+            current_level = current_level[part]
+        return current_level
+    except KeyError:
+        return JSONResponse(
+            status_code=404, 
+            content={"message": f"섹션 또는 키 '{section_path}'를 찾을 수 없습니다"}
+        )
+    except TypeError:
+        return JSONResponse(
+            status_code=400, 
+            content={"message": f"유효하지 않은 경로 '{section_path}'. 경로의 일부에 접근할 수 없습니다."}
+        )
+
+@app.put("/api/settings/{section_path:path}")
+async def update_section_settings_api(section_path: str, request: Request):
+    """지정된 섹션의 설정을 업데이트합니다."""
+    try:
+        new_section_data = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=400, 
+            content={"message": "요청 본문의 JSON 형식이 유효하지 않습니다"}
+        )
+
+    config = load_config()  # 현재 전체 설정을 로드
+    
+    parts = section_path.split('.')
+    current_level = config
+    
+    try:
+        # 마지막 부분을 제외하고 경로 탐색
+        for i, part in enumerate(parts[:-1]):
+            if part not in current_level:
+                # 경로 중간에 없는 경우, 새로 생성
+                current_level[part] = {}
+            elif not isinstance(current_level[part], dict):
+                # 경로 중간에 dict가 아닌 경우, 오류 반환
+                return JSONResponse(
+                    status_code=400, 
+                    content={"message": f"경로 '{'.'.join(parts[:i+1])}'는 사전이 아니라 '{type(current_level[part]).__name__}'입니다. 이 위치에 새 데이터를 추가할 수 없습니다."}
+                )
+            current_level = current_level[part]
+        
+        target_key = parts[-1]
+        
+        # 기존 데이터가 없으면 새 데이터로 설정
+        if target_key not in current_level:
+            current_level[target_key] = new_section_data
+        else:
+            # 기존 데이터가 있으면 타입 확인
+            existing_data = current_level[target_key]
+            
+            # 둘 다 딕셔너리인 경우, 깊은 병합 수행
+            if isinstance(existing_data, dict) and isinstance(new_section_data, dict):
+                # 재귀적으로 딕셔너리 병합 (깊은 병합)
+                def deep_merge(source, destination):
+                    for key, value in source.items():
+                        if key in destination and isinstance(destination[key], dict) and isinstance(value, dict):
+                            # 두 값 모두 딕셔너리인 경우 재귀적으로 병합
+                            deep_merge(value, destination[key])
+                        else:
+                            # 그 외의 경우 덮어쓰기
+                            destination[key] = value
+                    return destination
+                
+                # 깊은 병합 수행
+                current_level[target_key] = deep_merge(new_section_data, existing_data.copy())
+            elif isinstance(existing_data, list) and isinstance(new_section_data, list):
+                # 둘 다 리스트인 경우, 새 리스트로 대체 (리스트는 통째로 업데이트)
+                current_level[target_key] = new_section_data
+            else:
+                # 다른 타입인 경우, 새 데이터로 대체
+                current_level[target_key] = new_section_data
+        
+        # 변경된 설정 저장
+        save_config(config)
+        
+        # 업데이트된 전체 섹션 데이터 반환
+        return {
+            "success": True, 
+            "message": f"섹션 '{section_path}' 업데이트 성공", 
+            "updated_section_data": current_level[target_key]
+        }
+    except Exception as e:
+        print(f"섹션 '{section_path}' 업데이트 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500, 
+            content={"message": f"섹션 '{section_path}' 업데이트 오류: {str(e)}"}
+        )
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    uvicorn.run( "main:app", host="127.0.0.1", port=8010 , reload=True )

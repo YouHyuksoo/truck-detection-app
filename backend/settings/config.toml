@@ -1,0 +1,201 @@
+[[rois]]
+id = "roi-default-1"
+name = "기본 입구 영역"
+type = "polygon"
+color = "#ff0000"
+enabled = true
+minDetectionTime = 2
+description = "기본 ROI 설정"
+[[rois.points]]
+x = 0.1
+y = 0.1
+
+[[rois.points]]
+x = 0.4
+y = 0.1
+
+[[rois.points]]
+x = 0.4
+y = 0.3
+
+[[rois.points]]
+x = 0.1
+y = 0.3
+
+
+[rois.actions]
+detectTrucks = true
+performOcr = true
+sendToPLC = false
+triggerAlarm = false
+
+[general]
+app_name = "Truck Detection App"
+version = "1.0.0"
+
+[detection]
+confidence_threshold = 0.5
+enabled = true
+ocr_enabled = true
+last_updated = "2023-05-20T14:30:00.000Z"
+
+[camera]
+rtspUrl = "rtsp://example.com/stream"
+ipCameraUrl = "http://example.com/stream"
+usbCameraIndex = "0"
+resolution = "1920x1080"
+fps = 21
+enableAutoReconnect = true
+reconnectInterval = 5000
+bufferSize = 10
+
+[model]
+modelVersion = "yolov8"
+modelSize = "nano"
+customModelPath = "/models/custom.pt"
+confidenceThreshold = 0.5
+iouThreshold = 0.45
+maxDetections = 100
+enableGPU = true
+enableBatchProcessing = true
+batchSize = 4
+enableTensorRT = true
+enableQuantization = true
+quantizationType = "int8"
+inferenceDevice = "cuda:0"
+inputSize = 640
+classes = [ "truck", "car", "bus",]
+objectTypes = [ "vehicle",]
+colorMode = "rgb"
+modelFormat = "pytorch"
+enableHalfPrecision = true
+
+[ocr]
+engine = "easyocr"
+language = "digits"
+customModelPath = "/models/ocr"
+confidenceThreshold = 0.8
+enablePreprocessing = true
+preprocessingSteps = [ "grayscale", "threshold",]
+enableAutoRotation = true
+maxRotationAngle = 45
+enableDigitsOnly = true
+minDigits = 4
+maxDigits = 8
+enableWhitelist = true
+whitelist = "0123456789"
+enableBlacklist = false
+blacklist = ""
+enableGPU = true
+
+[tracking]
+algorithm = "sort"
+maxDisappeared = 30
+maxDistance = 50
+minConfidence = 0.5
+iouThreshold = 0.3
+enableKalmanFilter = true
+enableDirectionDetection = true
+directionThreshold = 0.7
+enableSizeFiltering = true
+minWidth = 100
+minHeight = 100
+maxWidth = 800
+maxHeight = 800
+trackingMode = "normal"
+
+[system]
+processingMode = "gpu"
+maxThreads = 4
+enableMultiprocessing = true
+gpuMemoryLimit = 4096
+maxFps = 30
+enableFrameSkipping = true
+frameSkipRate = 2
+logLevel = "info"
+logRetentionDays = 30
+enableImageSaving = true
+imageSavePath = "/data/images"
+imageFormat = "jpg"
+imageQuality = 95
+maxStorageSize = 1000000
+enableNotifications = true
+notifyOnError = true
+notifyOnWarning = true
+notifyOnSuccess = false
+emailNotifications = false
+emailRecipients = ""
+enableAutoBackup = true
+backupInterval = 86400
+backupPath = "/data/backups"
+maxBackupCount = 10
+
+[training]
+datasets_path = "/data/datasets"
+
+[plc]
+[[plc.mappings]]
+id = "mapping1"
+name = "트럭 감지 신호"
+plcAddress = "40001"
+dataType = "bit"
+access = "read"
+description = "트럭이 감지되면 1, 아니면 0"
+
+[[plc.mappings]]
+id = "mapping2"
+name = "카메라 트리거"
+plcAddress = "40002"
+dataType = "bit"
+access = "write"
+description = "카메라 촬영 트리거 신호"
+
+[training.hyperparameters]
+modelVersion = "yolov8"
+modelSize = "medium"
+epochs = 100
+batchSize = 16
+imageSize = 640
+learningRate = 0.01
+weightDecay = 0.0005
+momentum = 0.937
+useCosineScheduler = true
+warmupEpochs = 3
+iouThreshold = 0.7
+confThreshold = 0.25
+useAMP = true
+useEMA = true
+freezeBackbone = false
+freezeBackboneEpochs = 10
+useFineTuning = false
+pretrainedModel = ""
+freezeLayers = "backbone"
+fineTuningLearningRate = 0.001
+onlyTrainNewLayers = false
+
+[training.deployment_settings]
+modelFormat = "onnx"
+targetDevice = "gpu"
+enableQuantization = true
+quantizationType = "int8"
+optimizeForInference = true
+deploymentTarget = "production"
+modelVersion = "v1"
+modelName = "truck-detector"
+includeMetadata = true
+
+[plc.device]
+id = "plc1"
+name = "메인 PLC"
+type = "modbus_tcp"
+connectionType = "tcp"
+ipAddress = "192.168.1.100"
+port = 502
+timeout = 1000
+status = "disconnected"
+
+[plc.protocol_config]
+name = "modbus_tcp"
+autoConnect = true
+reconnectInterval = 5000
+maxReconnectAttempts = 5
